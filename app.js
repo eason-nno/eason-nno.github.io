@@ -966,7 +966,7 @@ async function pageReports() {
       return `<tr class="run-row"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
         <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill high" title="${esc(friendlyErr(r.error))}">失敗</span>` : `<span class="pill run">分析中</span>`}</td>
         <td class="num">${r.status === "done" ? `${fmtLv(r.entry)} / <span class="down">${fmtLv(r.stop)}</span> / <span class="up">${fmtLv(r.take_profit)}</span>` : "—"}</td>
-        <td class="muted num" style="font-size:12px">${m.quick ? `${esc(m.quick.used)}（槽位 ${m.quick.key_slot ?? "—"}）<br>${esc(m.deep.used)}（槽位 ${m.deep.key_slot ?? "—"}）${m.deep.fallback_reason ? '<br><span class="warn">深度已切換備援</span>' : ""}` : "—"}</td>
+        <td class="muted num" style="font-size:12px">${m.quick ? `${esc(m.quick.used)}（槽位 ${m.quick.key_slot ?? "—"}）<br>${esc(m.deep.used)}（槽位 ${m.deep.key_slot ?? "—"}）${m.quick.fallback_reason ? '<br><span class="warn">快速已切換備援</span>' : ""}${m.deep.fallback_reason ? '<br><span class="warn">深度已切換備援</span>' : ""}` : "—"}</td>
         <td class="num" style="white-space:nowrap" title="${esc(callsTitle(r.calls))}">${fmtCalls(r.calls)}${r.calls?.reconstructed ? '<span class="warn" title="原始執行的呼叫次數由紀錄還原">＊</span>' : ""}</td><td class="num">${r.duration_s ? Math.round(r.duration_s) + " 秒" : "—"}</td>
         <td class="c">${r.status === "done" ? `<a class="ok" href="#/report/${encodeURIComponent(r.id)}">查看</a>` : ""}${r.pdf_url ? `・<a class="ok" target="_blank" href="${esc(r.pdf_url)}">PDF</a>` : ""}</td></tr>`; }).join("")}
     </tbody></table>` : `<div class="empty-state" style="height:180px">${ICON.report}<b>尚未執行 AI 分析</b><small>每次 AI 團隊分析完成都會產生一份繁體中文報告（含 PDF），列在這裡。</small></div>`}</section>`;
@@ -1026,7 +1026,7 @@ async function pageSettings() {
       <div>思考強度</div><div>${esc(c.thinking || "模型預設")}</div>
       ${c.provider === "google" ? `<div>金鑰槽位</div><div>${A.role_key_slots ? slotSplit(t) : "槽位 " + c.key_slot}</div>` : ""}
       <div>金鑰</div><div>${KS[t] ? '<span class="ok">已設定</span>' : '<span class="bad">未設定</span>'}</div>
-      ${t === "deep" ? `<div>額度用完備援</div><div class="num">${esc(c.fallback_model || "不使用")}<br><span class="dim">同一把金鑰</span></div>` : ""}
+      <div>額度用完備援</div><div class="num">${esc(c.fallback_model || "不使用")}<br><span class="dim">同一把金鑰</span></div>
     </div></div>`; };
   $("#app").innerHTML = `${noteHTML()}
   <div class="set-grid">
