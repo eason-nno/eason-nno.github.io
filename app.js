@@ -59,6 +59,14 @@ const TZ_SHIFT = 8 * 3600; // 圖表時間軸以台北時間顯示
 const TF_LABEL = { "5m": "5分", "15m": "15分", "1h": "1小時", "4h": "4小時", "1d": "1日" };
 const dtf = new Intl.DateTimeFormat("zh-TW", { timeZone: TZ, month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
 const fmtTime = (x) => { if (!x) return "—"; const d = typeof x === "number" ? new Date(x) : new Date(x); return dtf.format(d).replace(/\//g, "-"); };
+/* 執行主機（雲端電腦 / 使用者的 PC）最後心跳：超過 75 分鐘沒有回報就標成離線（PC 版閒置時每 30 分鐘回報一次）。 */
+const hostBeat = (st) => {
+  const h = (st && st.host) || null, at = (h && h.heartbeat_at) || (st && st.published_at);
+  if (!at) return '<span class="dim">—</span>';
+  const age = (Date.now() - new Date(at).getTime()) / 60000;
+  const tag = age > 75 ? '<span class="bad">● 可能離線</span>' : '<span class="ok">● 在線</span>';
+  return `${tag}・${esc(h ? h.label : "雲端電腦")}${h && h.version && h.version !== "box" ? ` v${esc(h.version)}` : ""}<span class="dim">・${fmtTime(at)}（台北）</span>`;
+};
 const fmtClock = (d) => new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(d);
 const hhmmss = (x) => new Intl.DateTimeFormat("zh-TW", { timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(x));
 function pdec(p) { const a = Math.abs(p); return a >= 10 ? 2 : a >= 1 ? 4 : a >= 0.01 ? 5 : 8; }
@@ -178,7 +186,7 @@ async function pollData() {
       emit("data_updated", st);
     }
     DATA.published = st.published_at; DATA.cache["status.json"] = { t: Date.now(), v: st };
-    const pe = $("#pub-time"); if (pe) pe.textContent = fmtTime(st.published_at);
+    const pe = $("#pub-time"); if (pe) pe.textContent = fmtTime(st.published_at); const hb = $("#host-hb"); if (hb) hb.innerHTML = hostBeat(st);
   } catch (e) { /* 離線時略過 */ }
 }
 function quoteStatusText(q) {
@@ -1030,6 +1038,7 @@ async function pageSettings() {
         <div>下次執行</div><div class="num"><b>${AS.next_run ? fmtTime(AS.next_run) + "（台北）" : "—（排程關閉）"}</b></div>
         <div>排程器狀態</div><div>${sc.alive ? '<span class="ok">運作中</span>' : sc.alive === false ? '<span class="bad">未運作</span>' : '<span class="dim">—</span>'}${sc.last_fire ? `<span class="dim">・上次觸發 ${fmtTime(sc.last_fire)}</span>` : ""}</div>
         <div>網站資料更新</div><div class="num"><span id="pub-time">${fmtTime(st.published_at)}</span>（台北）<br><span class="dim">每次分析開始 / 完成、設定變更時由後台推送</span></div>
+        <div>主機最後回報</div><div class="num" id="host-hb">${hostBeat(st)}</div>
       </div>
       <p class="note">整點觸發條件：小時數能被間隔整除（例如每 3 小時 = 0、3、6、9…點），並略過不執行時段。一次只跑一個分析。</p></section>
     <section class="card"><div class="card-h"><h2>${ICON.scale}分析參數</h2></div>
