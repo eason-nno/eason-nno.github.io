@@ -1,36 +1,29 @@
 /* 公開版（GitHub Pages）資料層：
- * - 即時行情與 K 線：瀏覽器直接連 OKX 永續合約（USDT-SWAP）公開 API / WebSocket，不使用現貨
+ * - 即時行情與 K 線：瀏覽器直接連 Binance USDⓈ-M 永續合約（USDC 本位，例如 BTCUSDC）公開 API / WebSocket，不使用現貨
  * - 指標與訊號：在瀏覽器計算（與後端 backend/crypto.py 同一套公式）
  * - AI 結果：讀取後台推送的 data/*.json（每次分析完成後更新）
+ * Binance 連不上時顯示錯誤，不會自動改用其他交易所。
  */
 "use strict";
-const MK_REST_LIST = ["https://www.okx.com", "https://aws.okx.com"];
-// OKX 文件的連線位址為 :8443；部分網路擋 8443，最後再試 443
-const OK_WS_PUBLIC = ["wss://ws.okx.com:8443/ws/v5/public", "wss://wsaws.okx.com:8443/ws/v5/public", "wss://ws.okx.com/ws/v5/public"];
-const OK_WS_BUSINESS = ["wss://ws.okx.com:8443/ws/v5/business", "wss://wsaws.okx.com:8443/ws/v5/business", "wss://ws.okx.com/ws/v5/business"];
-let MK_REST = MK_REST_LIST[0], MK_WS = OK_WS_BUSINESS[0];
-const OK_BAR = { "5m": "5m", "15m": "15m", "1h": "1H", "4h": "4H", "1d": "1Dutc" };
-const OK_BAR_REV = Object.fromEntries(Object.entries(OK_BAR).map(([k, v]) => [v, k]));
-const okInst = (sym) => `${mkBaseRaw(sym)}-USDT-SWAP`;
-const okSym = (inst) => inst.replace(/-USDT-SWAP$/, "USDT");
-function mkBaseRaw(s) { return s.endsWith("USDT") ? s.slice(0, -4) : s; }
+const MK_REST_LIST = ["https://fapi.binance.com", "https://www.binance.com"];
+// 2026-04-23 起 Binance 合約 WebSocket 一般行情走 /market（aggTrade、kline、ticker、markPrice）
+const BN_WS_MARKET = ["wss://fstream.binance.com/market/stream"];
+let MK_REST = MK_REST_LIST[0], MK_WS = BN_WS_MARKET[0];
+const BN_QUOTE = "USDC";
+const BN_INT = { "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d" };
+const BN_INT_REV = Object.fromEntries(Object.entries(BN_INT).map(([k, v]) => [v, k]));
 const MK_TFS = ["5m", "15m", "1h", "4h", "1d"];
 const MK_TF_MS = { "5m": 300000, "15m": 900000, "1h": 3600000, "4h": 14400000, "1d": 86400000 };
 const MK_TF_LABEL = { "5m": "5分", "15m": "15分", "1h": "1小時", "4h": "4小時", "1d": "日線" };
 const MK_NAMES = { BTC: "比特幣", ETH: "以太坊", ZEC: "Zcash", SOL: "Solana" };
 const MK_DEFAULT_CFG = {
-  watchlist: ["BTCUSDT", "ETHUSDT", "ZECUSDT"], signal_timeframes: ["5m", "1h", "4h"],
+  watchlist: ["BTCUSDC", "ETHUSDC", "ZECUSDC"], signal_timeframes: ["5m", "1h", "4h"],
   rsi: { enabled: true, period: 14, overbought: 70, oversold: 30 }, macd: { enabled: true, fast: 12, slow: 26, signal: 9 },
   bb: { enabled: true, period: 20, std: 2.0 }, volume: { enabled: true, window: 20, multiplier: 3.0 },
 };
-const MK_CATEGORIES = [
-  ["BTC", "比特幣", ["BTCUSDT"]], ["L1", "公鏈 L1", ["ETHUSDT", "SOLUSDT", "AVAXUSDT", "ADAUSDT", "SUIUSDT", "NEARUSDT"]],
-  ["DeFi", "DeFi", ["UNIUSDT", "AAVEUSDT", "LINKUSDT", "LDOUSDT", "PENDLEUSDT", "CRVUSDT"]],
-  ["Meme", "迷因幣", ["DOGEUSDT", "SHIBUSDT", "PEPEUSDT", "WIFUSDT", "BONKUSDT", "FLOKIUSDT"]],
-  ["AI", "AI 概念", ["FETUSDT", "RENDERUSDT", "TAOUSDT", "WLDUSDT"]], ["L2", "Layer 2", ["ARBUSDT", "OPUSDT", "POLUSDT", "STRKUSDT"]],
-  ["PAY", "支付", ["XRPUSDT", "LTCUSDT", "BCHUSDT", "XLMUSDT", "TRXUSDT"]], ["GAME", "遊戲 / 元宇宙", ["SANDUSDT", "AXSUSDT", "GALAUSDT", "IMXUSDT", "APEUSDT"]],
-];
-const mkBase = (s) => { for (const q of ["USDT", "USDC", "FDUSD", "BTC"]) if (s.endsWith(q) && s.length > q.length) return s.slice(0, -q.length); return s; };
+const mkBase = (s) => { for (const q of ["USDT", "USDC", "FDUSD", "BUSD"]) if (s.endsWith(q) && s.length > q.length) return s.slice(0, -q.length); return s; };
+/** 任何代號（v1.0.7 以前 OKX 時期的 BTCUSDT、BTC）→ 目前使用的 Binance USDC 永續代號 BTCUSDC。 */
+const bnCanon = (s) => (s ? mkBase(String(s).toUpperCase()) + BN_QUOTE : s);
 const mkName = (s) => MK_NAMES[mkBase(s)] || mkBase(s);
 const ok = (...xs) => xs.every((x) => x != null && !Number.isNaN(x));
 const gfmt = (x, p) => { if (x == null || isNaN(x)) return "nan"; const s = Number(x).toPrecision(p); return String(Number(s)); };
@@ -149,78 +142,84 @@ const num = (x, nd = 8) => (x == null || !isFinite(x) ? null : Math.round(x * 10
 function publicBar(r) { const out = { t: r.t }; for (const k of ["o", "h", "l", "c", "v", "ma20", "ma60", "bb_up", "bb_mid", "bb_lo", "rsi", "macd", "macd_signal", "macd_hist", "vol_ma", "atr"]) out[k] = num(r[k]); out.closed = !!r.closed; return out; }
 function publicSignal(s) { return { ...s, bar_time_iso: isoTPE(s.bar_time), close_time_iso: isoTPE(s.bar_time + (MK_TF_MS[s.tf] || 0)), tf_label: MK_TF_LABEL[s.tf] || s.tf, name: mkName(s.symbol) }; }
 
-/* ---------------- OKX 即時報價：純函式（可在 node 測試）
-   文件：https://www.okx.com/docs-v5/en/#overview-websocket （公開頻道 trades / tickers；business 頻道 candle*）
-   顯示價格 = trades.px；24h 漲跌 = (last − open24h) / open24h（滾動 24 小時，非 UTC+8 日內）。 */
-const OK_STABLE = new Set(["USDC", "FDUSD", "TUSD", "USDP", "DAI", "BUSD", "USD1", "PYUSD", "USDE", "RLUSD", "EUR", "EURI", "AEUR", "XUSD", "USDS", "USDG", "GBP"]);
-/** 合併一則 OKX 報價（channel = "trades" | "tickers"）。回傳新物件或 null（訊息較舊）。
- *  ticker 的 last 只有在 ticker.ts 嚴格晚於目前成交時間時才會寫入價格，永遠不覆蓋較新的成交價。 */
-function okMerge(prev, channel, d, recvMs) {
-  if (!d || !d.instId) return null;
-  const q = prev ? { ...prev } : { symbol: okSym(d.instId), inst: d.instId, last: null, trade_id: -1, trade_time: 0, ticker_time: 0, change_pct: null, price_src: null };
-  if (channel === "trades") {
-    const id = +d.tradeId, ts = +d.ts;
+/* ---------------- Binance 即時報價：純函式（可在 node 測試）
+   文件：https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams
+   顯示價格 = aggTrade.p；24h 漲跌 = (last − open) / open（滾動 24 小時，非 UTC+8 日內）。 */
+const BN_STABLE = new Set(["USDC", "USDT", "FDUSD", "TUSD", "USDP", "DAI", "BUSD", "USD1", "PYUSD", "USDE", "RLUSD", "EUR", "EURI", "AEUR", "XUSD", "USDS", "USDG", "GBP", "BFUSD"]);
+/** REST /fapi/v1/ticker/24hr 或 WS 24hrTicker 事件 → 統一欄位。 */
+function bnTicker(d) {
+  if (d.e) return { symbol: d.s, last: +d.c, open: +d.o, high: +d.h, low: +d.l, volume: +d.v, quote_volume: +d.q, ts: +d.E || 0 };
+  return { symbol: d.symbol, last: +d.lastPrice, open: +d.openPrice, high: +d.highPrice, low: +d.lowPrice, volume: +d.volume, quote_volume: +d.quoteVolume, ts: +d.closeTime || 0 };
+}
+/** 合併一則 Binance 報價（kind = "trade"：aggTrade 事件 {s,p,T,a}；"ticker"：bnTicker 結果）。回傳新物件或 null（訊息較舊）。
+ *  ticker 的 last 只有在 ticker 時間嚴格晚於目前成交時間時才會寫入價格，永遠不覆蓋較新的成交價。 */
+function bnMerge(prev, kind, d, recvMs) {
+  const sym = d && (d.s || d.symbol); if (!sym) return null;
+  const q = prev ? { ...prev } : { symbol: sym, inst: sym, last: null, trade_id: -1, trade_time: 0, ticker_time: 0, change_pct: null, price_src: null };
+  let ts;
+  if (kind === "trade") {
+    const id = +d.a; ts = +d.T;
     if (ts < q.trade_time) return null;                                  // 較舊的成交
     if (ts === q.trade_time && isFinite(id) && id <= q.trade_id) return null; // 重複
-    q.last = +d.px; q.trade_time = ts; if (isFinite(id)) q.trade_id = id; q.price_src = "trade";
-  } else if (channel === "tickers") {
-    const ts = +d.ts;
+    q.last = +d.p; q.trade_time = ts; if (isFinite(id)) q.trade_id = id; q.price_src = "trade";
+  } else if (kind === "ticker") {
+    ts = +d.ts;
     if (ts < q.ticker_time) return null;
-    const o = +d.open24h, last = +d.last;
-    q.ticker_time = ts; q.open = o; q.high = +d.high24h; q.low = +d.low24h; q.volume = +d.volCcy24h;
-    q.quote_volume = isFinite(+d.volCcy24h) && isFinite(last) ? +d.volCcy24h * last : null;
+    const o = +d.open, last = +d.last;
+    q.ticker_time = ts; q.open = o; q.high = +d.high; q.low = +d.low; q.volume = +d.volume;
+    q.quote_volume = isFinite(+d.quote_volume) ? +d.quote_volume : null;
     q.change_pct = o > 0 && isFinite(last) ? Math.round(((last - o) / o) * 1e5) / 1e3 : null;
     if (q.last == null || ts > q.trade_time) { q.last = last; q.trade_time = ts; q.price_src = "ticker"; }
   } else return null;
-  q.event_time = Math.max(+d.ts || 0, q.event_time || 0); q.recv_at = recvMs;
+  q.event_time = Math.max(ts || 0, q.event_time || 0); q.recv_at = recvMs;
   return q;
 }
-/** OKX SWAP 24h 成交額前 n（USDT 本位，volCcy24h × last，排除穩定幣）。輸入為 tickers 物件陣列。 */
-function okTopVolume(tickers, n = 10, cryptoSet = null) {
-  // cryptoSet：instCategory = "1"（加密貨幣）的合約；OKX 另有股票（3）與商品（4）永續，不列入
-  return tickers.filter((x) => /-USDT-SWAP$/.test(x.instId) && (!cryptoSet || cryptoSet.has(x.instId))).map((x) => ({ x, base: x.instId.split("-")[0] }))
-    .filter(({ base }) => !OK_STABLE.has(base))
-    .map(({ x, base }) => { const o = +x.open24h, c = +x.last; return { key: base, name: base, symbol: okSym(x.instId), inst: x.instId, last: c, change_pct: o > 0 ? Math.round(((c - o) / o) * 10000) / 100 : 0, quote_volume: +x.volCcy24h * c, members: [] }; })
+/** Binance USDC 永續 24h 成交額前 n（quoteVolume，USDC；排除穩定幣與交割合約）。輸入為 REST /fapi/v1/ticker/24hr 陣列。 */
+function bnTopVolume(tickers, n = 10) {
+  return tickers.filter((x) => /^[A-Z0-9]+USDC$/.test(x.symbol || "")).map((x) => ({ t: bnTicker(x), base: mkBase(x.symbol) }))
+    .filter(({ base }) => !BN_STABLE.has(base))
+    .map(({ t, base }) => ({ key: base, name: base, symbol: t.symbol, inst: t.symbol, last: t.last, change_pct: t.open > 0 ? Math.round(((t.last - t.open) / t.open) * 10000) / 100 : 0, quote_volume: t.quote_volume, members: [] }))
     .filter((x) => x.quote_volume > 0).sort((a, b) => b.quote_volume - a.quote_volume).slice(0, n);
 }
-/** OKX K 線列 [ts,o,h,l,c,vol,volCcy,volCcyQuote,confirm] → 內部 bar（v 用幣本位數量 volCcy）。 */
-function okBar(r) { return { t: +r[0], o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[6], closed: r[8] === "1" }; }
+/** REST K 線 [openTime,o,h,l,c,volume,closeTime,...] → 內部 bar（v = 幣本位成交量）。 */
+function bnBar(r, now) { return { t: +r[0], o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[5], closed: +r[6] < (now ?? Date.now()) }; }
+/** WebSocket kline 事件的 k 物件 → 內部 bar。 */
+function bnWsBar(k) { return { t: +k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.v, closed: !!k.x }; }
 /** 合併 K 線（新到舊或舊到新皆可），以 t 去重、排序。 */
-function okMergeBars(old, rows) {
+function bnMergeBars(old, rows) {
   const m = new Map(old.map((b) => [b.t, b])); for (const b of rows) m.set(b.t, b);
   return [...m.values()].sort((a, b) => a.t - b.t);
 }
 
-if (typeof module !== "undefined") module.exports = { computeIndicators, detectSignals, techScore, riskLevel, warmup, MK_DEFAULT_CFG, mkBias, mkDir, MK_BIAS_TFS, okMerge, okTopVolume, okBar, okMergeBars, okInst, okSym, OK_BAR };
+if (typeof module !== "undefined") module.exports = { computeIndicators, detectSignals, techScore, riskLevel, warmup, MK_DEFAULT_CFG, mkBias, mkDir, MK_BIAS_TFS, bnMerge, bnTicker, bnTopVolume, bnBar, bnWsBar, bnMergeBars, bnCanon, BN_INT };
 
 /* ---------------- 瀏覽器端：行情服務 */
-/** 一條 OKX WebSocket：subscribe、每 25 秒送 "ping"、等 "pong"；狀態只看 socket 與 pong，不看資料間隔。 */
-function okSocket(name, urls, args, onData, status, emitStatus) {
+/** 一條 Binance 合併串流 WebSocket：連線後 SUBSCRIBE；瀏覽器會自動回應伺服器 ping。
+ *  狀態看 socket 是否開啟；60 秒完全沒有訊息（K 線串流每 250ms 更新，正常不會發生）就重連。 */
+function bnSocket(name, urls, streams, onData, status, emitStatus) {
   const st = (status[name] = { state: "connecting", connected: false, ever_open: false, url: null, attempts: 0, reconnects: 0, messages: 0, last_msg_at: null, last_pong_at: null, last_close: null });
-  let backoff = 1000, idx = 0, ws = null, pingT = null, pongWait = null;
+  let backoff = 1000, idx = 0, ws = null, idleT = null;
+  const idle = () => { clearTimeout(idleT); idleT = setTimeout(() => { st.last_close = "60 秒沒有資料"; try { ws.close(); } catch (e) {} }, 60000); };
   const open = () => {
     const url = st.ever_open ? st.url : urls[idx % urls.length]; st.attempts++;
     st.state = st.ever_open ? "reconnecting" : st.attempts > urls.length ? "failed" : "connecting"; emitStatus();
     try { ws = new WebSocket(url); } catch (e) { st.last_close = String(e); idx++; return retry(); }
     ws.onopen = () => {
       st.ever_open = true; st.url = url; st.connected = true; st.state = "open"; backoff = 1000; emitStatus();
-      for (let i = 0; i < args.length; i += 50) ws.send(JSON.stringify({ op: "subscribe", args: args.slice(i, i + 50) }));
-      pingT = setInterval(() => {
-        try { ws.send("ping"); } catch (e) {}
-        clearTimeout(pongWait); pongWait = setTimeout(() => { st.last_close = "pong 逾時"; try { ws.close(); } catch (e) {} }, 15000);
-      }, 25000);
+      for (let i = 0; i < streams.length; i += 100) setTimeout(() => { try { ws.send(JSON.stringify({ method: "SUBSCRIBE", params: streams.slice(i, i + 100), id: i / 100 + 1 })); } catch (e) {} }, (i / 100) * 300);
+      idle();
     };
     ws.onmessage = (e) => {
-      if (e.data === "pong") { clearTimeout(pongWait); st.last_pong_at = new Date().toISOString(); return; }
+      idle();
       let m; try { m = JSON.parse(e.data); } catch (err) { return; }
-      if (m.event === "error") { st.last_error = m.msg; return; }
-      if (!m.arg || !m.data) return;
-      st.messages++; st.last_msg_at = new Date().toISOString();
-      onData(m.arg.channel, m.arg.instId, m.data);
+      if (m.error) { st.last_error = m.error.msg || String(m.error); return; }
+      if (!m.stream || !m.data) return;
+      st.messages++; st.last_msg_at = new Date().toISOString(); st.last_pong_at = st.last_msg_at;
+      onData(m.stream, m.data);
     };
     ws.onclose = (e) => {
-      clearInterval(pingT); clearTimeout(pongWait); st.connected = false;
-      st.last_close = st.last_close === "pong 逾時" ? st.last_close : `code ${e.code}${e.reason ? " " + e.reason : ""}`;
+      clearTimeout(idleT); st.connected = false;
+      st.last_close = st.last_close === "60 秒沒有資料" ? st.last_close : `code ${e.code}${e.reason ? " " + e.reason : ""}`;
       if (!st.ever_open) idx++; else st.reconnects++;
       st.state = st.ever_open ? "reconnecting" : st.attempts >= urls.length ? "failed" : "connecting";
       emitStatus(); retry();
@@ -237,32 +236,28 @@ function okSocket(name, urls, args, onData, status, emitStatus) {
 if (typeof window !== "undefined") {
   window.MK = {
     cfg: MK_DEFAULT_CFG, bars: {}, ind: {}, tickers: {}, quotes: {}, marks: {}, signals: new Map(), categories: { updated_at: null, items: [] }, sentiment: null,
-    status: { ws_connected: false, last_msg_at: null, reconnects: 0, messages: 0, started_at: new Date().toISOString(), rest_base: MK_REST, ws_base: OK_WS_BUSINESS[0], rest_tested: {}, quote: null, kline: null, source: "OKX 永續合約（USDT-SWAP）" },
+    status: { ws_connected: false, last_msg_at: null, reconnects: 0, messages: 0, started_at: new Date().toISOString(), rest_base: MK_REST, ws_base: BN_WS_MARKET[0], rest_tested: {}, quote: null, kline: null, source: "Binance USDⓈ-M 永續合約（USDC 本位）", data_error: null },
     listeners: [], ready: null, lastChecked: {}, heatInst: [],
     sigTfs() { return [...new Set(this.cfg.signal_timeframes.concat(MK_BIAS_TFS))]; }, // 多空分歧需要 15分/1H/4H 的訊號
     emit(ev, d) { this.listeners.forEach((fn) => fn(ev, d)); },
     async rest(path) {
       let err;
       for (const base of [MK_REST, ...MK_REST_LIST.filter((b) => b !== MK_REST)]) {
-        try { const r = await fetch(base + path); this.status.rest_tested[base] = r.status;
-          if (r.ok) { const j = await r.json(); if (j.code !== "0") throw new Error(`OKX ${j.code} ${j.msg}`); if (base !== MK_REST) { MK_REST = base; this.status.rest_base = base; } return j.data; }
-          if (r.status === 429) { await new Promise((ok) => setTimeout(ok, 1200)); const r2 = await fetch(base + path); if (r2.ok) { const j = await r2.json(); if (j.code === "0") return j.data; } }
-          err = new Error(`OKX HTTP ${r.status}`); }
+        try { let r = await fetch(base + path); this.status.rest_tested[base] = r.status;
+          if (r.status === 429 || r.status === 418) { await new Promise((ok) => setTimeout(ok, 1200)); r = await fetch(base + path); }
+          if (r.ok) { const j = await r.json(); if (base !== MK_REST) { MK_REST = base; this.status.rest_base = base; } this.status.data_error = null; return j; }
+          let msg = ""; try { const j = await r.json(); msg = j.msg || ""; } catch (e) {}
+          err = new Error(`Binance HTTP ${r.status}${msg ? " " + msg : ""}`); }
         catch (e) { err = e; this.status.rest_tested[base] = this.status.rest_tested[base] || "error"; }
       }
+      this.status.data_error = `無法連上 Binance（${err && err.message}）；不會改用其他交易所`;
+      this.emitStatus();
       throw err;
     },
     async backfill(sym, tf, limit = 500) {
-      const inst = okInst(sym), bar = OK_BAR[tf];
-      let rows = (await this.rest(`/api/v5/market/candles?instId=${inst}&bar=${bar}&limit=${Math.min(300, limit)}`)).map(okBar);
-      // 較舊的部分用 history-candles 補齊（每次最多 100 根）
-      while (rows.length && rows.length < limit) {
-        const oldest = Math.min(...rows.map((b) => b.t));
-        const more = (await this.rest(`/api/v5/market/history-candles?instId=${inst}&bar=${bar}&after=${oldest}&limit=100`).catch(() => [])).map(okBar);
-        if (!more.length) break; rows = rows.concat(more);
-      }
+      const rows = (await this.rest(`/fapi/v1/klines?symbol=${sym}&interval=${BN_INT[tf]}&limit=${Math.min(1500, limit)}`)).map((r) => bnBar(r, Date.now()));
       const key = sym + "|" + tf;
-      this.bars[key] = okMergeBars(this.bars[key] || [], rows).slice(-600);
+      this.bars[key] = bnMergeBars(this.bars[key] || [], rows).slice(-600);
       this.recalc(sym, tf);
     },
     recalc(sym, tf) { this.ind[sym + "|" + tf] = computeIndicators(this.bars[sym + "|" + tf] || [], this.cfg); return this.ind[sym + "|" + tf]; },
@@ -279,22 +274,21 @@ if (typeof window !== "undefined") {
       return out;
     },
     async loadHeat() {
-      // 市場板塊：載入時呼叫一次 OKX SWAP tickers，之後由 WS tickers 更新
-      const [all, insts] = await Promise.all([this.rest(`/api/v5/market/tickers?instType=SWAP`), this.rest(`/api/v5/public/instruments?instType=SWAP`).catch(() => null)]);
-      const crypto = insts ? new Set(insts.filter((x) => String(x.instCategory || "1") === "1").map((x) => x.instId)) : null;
-      const top = okTopVolume(all, 10, crypto);
-      this.heatInst = top.map((x) => x.inst);
-      for (const x of all) if (this.heatInst.includes(x.instId) || this.cfg.watchlist.includes(okSym(x.instId))) {
-        const q = okMerge(this.quotes[okSym(x.instId)], "tickers", x, Date.now()); if (q) this.quotes[q.symbol] = q;
+      // 市場板塊：載入時呼叫一次 Binance 24h tickers，之後由 WS ticker 更新
+      const all = await this.rest(`/fapi/v1/ticker/24hr`);
+      const top = bnTopVolume(all, 10);
+      this.heatInst = top.map((x) => x.symbol);
+      for (const x of all) if (this.heatInst.includes(x.symbol) || this.cfg.watchlist.includes(x.symbol)) {
+        const q = bnMerge(this.quotes[x.symbol], "ticker", bnTicker(x), Date.now()); if (q) this.quotes[q.symbol] = q;
       }
       this.renderHeat();
       return this.heatInst;
     },
     renderHeat() {
-      const items = this.heatInst.map((inst) => this.quotes[okSym(inst)]).filter(Boolean)
-        .map((q) => ({ key: mkBaseRaw(q.symbol), name: mkBaseRaw(q.symbol), symbol: q.symbol, inst: q.inst, last: q.last, change_pct: q.change_pct, quote_volume: q.quote_volume, members: [] }))
+      const items = this.heatInst.map((s) => this.quotes[s]).filter(Boolean)
+        .map((q) => ({ key: mkBase(q.symbol), name: mkBase(q.symbol), symbol: q.symbol, inst: q.inst, last: q.last, change_pct: q.change_pct, quote_volume: q.quote_volume, members: [] }))
         .sort((a, b) => b.quote_volume - a.quote_volume);
-      this.categories = { updated_at: new Date().toISOString(), items, kind: "top_volume", note: "OKX 永續 USDT 合約 24h 成交額前 10（volCcy24h × 最新價，排除穩定幣與股票/商品合約；WebSocket 即時更新）" };
+      this.categories = { updated_at: new Date().toISOString(), items, kind: "top_volume", note: "Binance USDⓈ-M USDC 永續合約 24h 成交額前 10（quoteVolume，排除穩定幣；WebSocket 即時更新）" };
       this.emit("categories", this.categories);
     },
     async refreshSentiment() {
@@ -306,7 +300,7 @@ if (typeof window !== "undefined") {
       } catch (e) { /* 改用後台快照 */ }
     },
     async start(cfg) {
-      if (cfg) this.cfg = cfg;
+      if (cfg) this.cfg = { ...cfg, watchlist: [...new Set((cfg.watchlist || MK_DEFAULT_CFG.watchlist).map(bnCanon))] };
       const heat = this.loadHeat().catch((e) => { console.warn("heat", e); return []; });
       this.ready = (async () => {
         await Promise.all(this.cfg.watchlist.flatMap((s) => MK_TFS.map((tf) => this.backfill(s, tf).then(() => { if (this.sigTfs().includes(tf)) this.scan(s, tf, "history"); }).catch((e) => console.warn("backfill", s, tf, e)))));
@@ -320,39 +314,38 @@ if (typeof window !== "undefined") {
     },
     emitStatus() {
       const q = this.status.quote || {}, k = this.status.kline || {};
-      this.status.ws_connected = !!k.connected; this.status.last_msg_at = k.last_msg_at; this.status.reconnects = k.reconnects || 0; this.status.messages = k.messages || 0; this.status.ws_base = k.url || OK_WS_BUSINESS[0];
+      this.status.ws_connected = !!k.connected; this.status.last_msg_at = k.last_msg_at; this.status.reconnects = k.reconnects || 0; this.status.messages = k.messages || 0; this.status.ws_base = k.url || BN_WS_MARKET[0];
       this.status.quote_ok = !!q.connected;
       this.emit("status", this.status);
     },
     connectQuotes() {
-      const insts = [...new Set(this.cfg.watchlist.map(okInst).concat(this.heatInst))];
-      const args = this.cfg.watchlist.map((s) => ({ channel: "trades", instId: okInst(s) })).concat(insts.map((i) => ({ channel: "tickers", instId: i })))
-        .concat(this.cfg.watchlist.map((s) => ({ channel: "mark-price", instId: okInst(s) })));
+      const w = this.cfg.watchlist.map((x) => x.toLowerCase());
+      const tick = [...new Set(this.cfg.watchlist.concat(this.heatInst))].map((x) => x.toLowerCase());
+      const streams = w.map((x) => `${x}@aggTrade`).concat(tick.map((x) => `${x}@ticker`)).concat(w.map((x) => `${x}@markPrice@1s`));
       let heatT = null;
-      const st = okSocket("quote", OK_WS_PUBLIC, args, (ch, inst, rows) => {
-        const now = Date.now(); let changed = false;
-        if (ch === "mark-price") { // 標記價格（模擬交易的未實現損益 / ROI 用）
-          for (const d of rows) { const sym = okSym(d.instId || inst), ts = +d.ts; if (!this.marks[sym] || ts >= this.marks[sym].ts) { this.marks[sym] = { px: +d.markPx, ts }; this.emit("mark", { symbol: sym, px: +d.markPx, ts }); } }
+      const st = bnSocket("quote", BN_WS_MARKET, streams, (stream, d) => {
+        const now = Date.now();
+        if (d.e === "markPriceUpdate") { // 標記價格（模擬交易的未實現損益 / ROI 用）
+          const sym = d.s, ts = +d.E; if (!this.marks[sym] || ts >= this.marks[sym].ts) { this.marks[sym] = { px: +d.p, ts }; this.emit("mark", { symbol: sym, px: +d.p, ts }); }
           return;
         }
-        for (const d of rows) {
-          const q = okMerge(this.quotes[okSym(d.instId || inst)], ch, { instId: inst, ...d }, now); if (!q) continue;
-          this.quotes[q.symbol] = q; changed = true;
-          if (this.cfg.watchlist.includes(q.symbol) && q.last != null) {
-            st.last_quote_at = new Date(now).toISOString();
-            const t = { symbol: q.symbol, last: q.last, change_pct: q.change_pct, open: q.open, high: q.high, low: q.low, volume: q.volume, quote_volume: q.quote_volume, event_time: q.event_time, trade_time: q.trade_time, recv_at: now, price_src: q.price_src };
-            this.tickers[q.symbol] = t; this.emit("ticker", t);
-          }
+        const kind = d.e === "aggTrade" ? "trade" : d.e === "24hrTicker" ? "ticker" : null; if (!kind) return;
+        const q = bnMerge(this.quotes[d.s], kind, kind === "ticker" ? bnTicker(d) : d, now); if (!q) return;
+        this.quotes[q.symbol] = q;
+        if (this.cfg.watchlist.includes(q.symbol) && q.last != null) {
+          st.last_quote_at = new Date(now).toISOString();
+          const t = { symbol: q.symbol, last: q.last, change_pct: q.change_pct, open: q.open, high: q.high, low: q.low, volume: q.volume, quote_volume: q.quote_volume, event_time: q.event_time, trade_time: q.trade_time, recv_at: now, price_src: q.price_src };
+          this.tickers[q.symbol] = t; this.emit("ticker", t);
         }
-        if (changed && ch === "tickers" && this.heatInst.includes(inst) && !heatT) heatT = setTimeout(() => { heatT = null; this.renderHeat(); }, 2000);
+        if (kind === "ticker" && this.heatInst.includes(q.symbol) && !heatT) heatT = setTimeout(() => { heatT = null; this.renderHeat(); }, 2000);
       }, this.status, () => this.emitStatus());
       this.qst = st;
     },
     connectCandles() {
-      const args = this.cfg.watchlist.flatMap((s) => MK_TFS.map((tf) => ({ channel: "candle" + OK_BAR[tf], instId: okInst(s) })));
-      const st = okSocket("kline", OK_WS_BUSINESS, args, (ch, inst, rows) => {
-        const tf = OK_BAR_REV[ch.replace(/^candle/, "")]; if (!tf) return;
-        for (const r of rows) this.onCandle(okSym(inst), tf, okBar(r));
+      const streams = this.cfg.watchlist.flatMap((s) => MK_TFS.map((tf) => `${s.toLowerCase()}@kline_${BN_INT[tf]}`));
+      const st = bnSocket("kline", BN_WS_MARKET, streams, (stream, d) => {
+        if (d.e !== "kline") return; const tf = BN_INT_REV[d.k.i]; if (!tf) return;
+        this.onCandle(d.s, tf, bnWsBar(d.k));
       }, this.status, () => this.emitStatus());
       st.onReconnect = () => this.resync();
     },
@@ -370,9 +363,9 @@ if (typeof window !== "undefined") {
         try { await this.backfill(s, tf, 300); if (this.sigTfs().includes(tf)) this.scan(s, tf, "recovered", this.lastChecked[s + "|" + tf]).forEach((x) => this.emit("signal", x)); } catch (e) {}
       }
     },
-    klines(sym, tf, limit) { return { symbol: sym, tf, source: "OKX " + okInst(sym), bars: (this.ind[sym + "|" + tf] || []).slice(-Math.max(30, Math.min(limit || 300, 600))).map(publicBar) }; },
+    klines(sym, tf, limit) { return { symbol: sym, tf, source: "Binance " + sym, bars: (this.ind[sym + "|" + tf] || []).slice(-Math.max(30, Math.min(limit || 300, 600))).map(publicBar) }; },
     summary(sym) {
-      const out = { symbol: sym, base: mkBase(sym), name: mkName(sym), inst: okInst(sym), ticker: this.tickers[sym] || null };
+      const out = { symbol: sym, base: mkBase(sym), name: mkName(sym), inst: sym, ticker: this.tickers[sym] || null };
       out.spark = (this.bars[sym + "|1h"] || []).slice(-30).map((b) => b.c);
       const dims = {};
       for (const tf of MK_TFS) {

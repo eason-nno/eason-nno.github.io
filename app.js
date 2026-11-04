@@ -1,5 +1,5 @@
 /* TradingAgents 加密短線研究 — 公開版（GitHub Pages，靜態）
- * 即時行情在瀏覽器直接連 OKX 永續合約；AI 結果讀取後台推送的 data/*.json。
+ * 即時行情在瀏覽器直接連 Binance USDⓈ-M 永續合約（USDC 本位）；AI 結果讀取後台推送的 data/*.json。
  * 原始碼：/workspace/ta-web/pages_src（由 tools/publish_pages.py 建置）。 */
 "use strict";
 const $ = (s, el = document) => el.querySelector(s);
@@ -22,10 +22,14 @@ function nextRunTime(s, after = Date.now()) {
   for (let i = 0; i < 72; i++, t += 3600000) { const h = new Date(t + 8 * 3600000).getUTCHours(); if (h % n === 0 && !quiet(h)) return new Date(t).toISOString(); }
   return null;
 }
+/* v1.0.8 起全部改用 Binance USDC 永續；v1.0.7 以前的 OKX 舊紀錄代號是 BTCUSDT，用 coinKey 對應到同一個幣 */
+const coinKey = (s) => (s ? String(s).toUpperCase().replace(/(USDT|USDC|FDUSD|BUSD)$/, "") + "USDC" : s);
+const sameCoin = (a, b) => !!a && !!b && coinKey(a) === coinKey(b);
+const unitOf = (sym) => (/USDT$/.test(sym || "") ? "USDT" : "USDC");
 async function aiState() {
   const [runs, st] = await Promise.all([J("runs.json"), J("status.json")]);
-  const latest = (sym) => runs.find((r) => r.symbol === sym && r.status === "done") || null;
-  const status = (sym) => (st.busy && st.current?.symbol === sym ? "running" : latest(sym) ? "done" : "not_run");
+  const latest = (sym) => runs.find((r) => sameCoin(r.symbol, sym) && r.status === "done") || null;
+  const status = (sym) => (st.busy && sameCoin(st.current?.symbol, sym) ? "running" : latest(sym) ? "done" : "not_run");
   return { runs, st, latest, status };
 }
 const api = async (p) => {
@@ -39,18 +43,18 @@ const api = async (p) => {
       ai_live: A.st.busy ? A.st.current : null, categories: MK.categories.items.length ? MK.categories : mkt.categories || MK.categories, sentiment: MK.sentiment || mkt.sentiment };
   }
   if ((m = path.match(/^\/api\/crypto\/symbol\/(\w+)$/))) {
-    await MK.ready; const A = await aiState(); const mkt = await J("market.json").catch(() => ({})); const s = m[1].toUpperCase();
+    await MK.ready; const A = await aiState(); const mkt = await J("market.json").catch(() => ({})); const s = coinKey(m[1]);
     if (!MK.cfg.watchlist.includes(s)) throw new Error("這個幣種不在追蹤清單");
     return { ...MK.summary(s), ai: A.latest(s), ai_status: A.status(s), sentiment: MK.sentiment || mkt.sentiment,
-      ai_live: A.st.busy && A.st.current?.symbol === s ? A.st.current : null, ai_last: A.runs.find((r) => r.symbol === s) || null };
+      ai_live: A.st.busy && sameCoin(A.st.current?.symbol, s) ? A.st.current : null, ai_last: A.runs.find((r) => sameCoin(r.symbol, s)) || null };
   }
-  if ((m = path.match(/^\/api\/crypto\/klines\/(\w+)$/))) { await MK.ready; return MK.klines(m[1].toUpperCase(), q.get("tf") || "4h", +(q.get("limit") || 300)); }
+  if ((m = path.match(/^\/api\/crypto\/klines\/(\w+)$/))) { await MK.ready; return MK.klines(coinKey(m[1]), q.get("tf") || "4h", +(q.get("limit") || 300)); }
   if (path === "/api/crypto/signals") { await MK.ready; return MK.signalList({ symbol: q.get("symbol"), tf: q.get("tf"), limit: +(q.get("limit") || 60) }); }
-  if (path === "/api/crypto/ai/runs") { const runs = await J("runs.json"); const sy = q.get("symbol"); return runs.filter((r) => !sy || r.symbol === sy.toUpperCase()).slice(0, +(q.get("limit") || 50)); }
+  if (path === "/api/crypto/ai/runs") { const runs = await J("runs.json"); const sy = q.get("symbol"); return runs.filter((r) => !sy || sameCoin(r.symbol, sy)).slice(0, +(q.get("limit") || 50)); }
   if ((m = path.match(/^\/api\/crypto\/ai\/runs\/([\w-]+)$/))) return J(`runs/${m[1]}.json`, 600000);
   if (path === "/api/crypto/ai/live") { const st = await J("status.json"); return { busy: !!st.busy, current: st.current || null }; }
   if (path === "/api/crypto/ai/settings") { const s = await J("settings.json"); return { ...s, next_run: nextRunTime(s.settings) }; }
-  if ((m = path.match(/^\/api\/crypto\/ai\/(derivs|news)\/(\w+)$/))) { const mkt = await J("market.json"); const v = (mkt[m[1]] || {})[m[2].toUpperCase()]; if (!v) throw new Error("沒有快照"); return { ...v, fetched_at: mkt.generated_at }; }
+  if ((m = path.match(/^\/api\/crypto\/ai\/(derivs|news)\/(\w+)$/))) { const mkt = await J("market.json"); const v = (mkt[m[1]] || {})[coinKey(m[2])]; if (!v) throw new Error("沒有快照"); return { ...v, fetched_at: mkt.generated_at }; }
   if (path === "/api/crypto/settings") { const s = await J("settings.json"); return { settings: s.signal_settings || MK.cfg, status: MK.status }; }
   throw new Error("公開版不支援：" + path);
 };
@@ -74,7 +78,7 @@ function fmtPrice(p, d) { if (p == null || isNaN(p)) return "—"; d = d ?? pdec
 const fmtPct = (x) => (x == null || isNaN(x) ? "—" : `${x > 0 ? "+" : ""}${Number(x).toFixed(2)}%`);
 const signCls = (x) => (x > 0 ? "up" : x < 0 ? "down" : "flat");
 function fmtBig(x) { if (x == null) return "—"; if (x >= 1e8) return (x / 1e8).toFixed(2) + " 億"; if (x >= 1e4) return (x / 1e4).toFixed(1) + " 萬"; return x.toFixed(2); }
-const baseOf = (s) => s.replace(/(USDT|USDC|FDUSD|BTC)$/, "") || s;
+const baseOf = (s) => s.replace(/(USDT|USDC|FDUSD|BUSD)$/, "") || s;
 
 const ICON = {
   home: '<svg viewBox="0 0 24 24"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>',
@@ -192,16 +196,16 @@ async function pollData() {
 function quoteStatusText(q) {
   q = q || {};
   const t = q.last_quote_at ? `最後報價 ${hhmmss(new Date(q.last_quote_at).getTime())}（台北）` : "等待第一筆成交";
-  if (q.connected) return { cls: "on", text: `OKX 永續即時・${t}` };
-  if (q.state === "failed") return { cls: "off", text: "無法連上 OKX WebSocket，可能受地區/網路限制，重試中…" };
-  if (q.ever_open) return { cls: "off", text: `OKX 報價斷線，重連中…${q.last_quote_at ? "・" + t : ""}` };
-  return { cls: "", text: "OKX 報價連線中…" };
+  if (q.connected) return { cls: "on", text: `Binance 永續即時・${t}` };
+  if (q.state === "failed") return { cls: "off", text: "無法連上 Binance WebSocket，可能受地區/網路限制，重試中…（不會改用其他交易所）" };
+  if (q.ever_open) return { cls: "off", text: `Binance 報價斷線，重連中…${q.last_quote_at ? "・" + t : ""}` };
+  return { cls: "", text: "Binance 報價連線中…" };
 }
 function updateLivePill() {
   const p = $("#live-pill"), q = (MK.status || {}).quote, r = quoteStatusText(q);
   p.classList.toggle("on", r.cls === "on"); p.classList.toggle("off", r.cls === "off");
   $("#live-text").textContent = r.text;
-  const n = $("#q-note"); if (n) { n.textContent = `報價：OKX 永續合約（USDT-SWAP）成交價・${r.text}`; n.className = "note q-note " + r.cls; }
+  const n = $("#q-note"); if (n) { n.textContent = `報價：Binance USDⓈ-M 永續合約（USDC 本位）成交價・${r.text}${(MK.status || {}).data_error ? "・" + MK.status.data_error : ""}`; n.className = "note q-note " + r.cls; }
 }
 /** 把模型 / API 的原始錯誤轉成簡短的繁中說明（不顯示原始 JSON）。 */
 /** 持有期間文字：1 天顯示「24 小時」。 */
@@ -269,8 +273,8 @@ function toast(msg, cls = "") {
 }
 
 /* shared UI */
-let WATCH = ["BTCUSDT", "ETHUSDT", "ZECUSDT"];
-let lastCoin = localStorage.getItem("lastCoin") || "BTCUSDT";
+let WATCH = ["BTCUSDC", "ETHUSDC", "ZECUSDC"];
+let lastCoin = coinKey(localStorage.getItem("lastCoin") || "BTCUSDC");
 function renderNav(active) {
   const items = [["home", "#/", "總覽", ICON.home], ["coin", `#/coin/${lastCoin}`, "幣種研究", ICON.coin], ["team", "#/team", "AI 團隊", ICON.team],
     ["paper", "#/paper", "模擬交易", ICON.paper], ["reports", "#/reports", "研究報告", ICON.report]];
@@ -336,7 +340,7 @@ const smallIc = (k, px = 15) => ICON[k].replace("<svg", `<svg style="width:${px}
 /* 總覽 */
 let ovSel = null, ovFilter = "all";
 async function pageOverview() {
-  setTitle("市場總覽", "即時資料・OKX 永續");
+  setTitle("市場總覽", "即時資料・Binance USDC 永續");
   const app = $("#app");
   const [d, sigs] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/signals?limit=50")]);
   WATCH = d.items.map((i) => i.symbol);
@@ -358,7 +362,7 @@ async function pageOverview() {
         <div class="tabs" id="ov-tabs">${[["all", "全部"], ["bull", "技術偏多"], ["bear", "技術偏空"]].map(([k, t]) => `<button class="tab ${ovFilter === k ? "active" : ""}" data-f="${k}">${t}</button>`).join("")}</div>
         <span class="note">技術多空、多空分歧與波動風險皆由指標計算（非 AI）：1H 為主、4H 看大方向、15 分看進場時機</span>
       </div>
-      <div class="note q-note" id="q-note" style="margin:6px 0 2px">報價：OKX 永續合約（USDT-SWAP）成交價・連線中…
+      <div class="note q-note" id="q-note" style="margin:6px 0 2px">報價：Binance USDⓈ-M 永續合約（USDC 本位）成交價・連線中…
       </div>
       <table class="watch"><thead><tr><th>代號 / 名稱</th><th>最新價格</th><th>走勢（1小時・30 期）</th><th>技術多空（15分 / 1H / 4H + 綜合）</th><th>多空分歧（近 6 小時）</th><th>即時訊號（最新觸發）</th><th>波動風險</th><th>研究狀態</th></tr></thead>
       <tbody id="ov-rows"></tbody></table>
@@ -411,7 +415,7 @@ async function pageOverview() {
     const it = (cat && cat.kind === "top_volume" && cat.items) || [];
     if (!it.length) { $("#heat").innerHTML = `<div class="empty-state" style="grid-column:1/-1;grid-row:1/-1"><b>成交額排行載入中</b></div>`; return; }
     const col = (x) => { const a = Math.min(Math.abs(x) / 5, 1) * 0.55 + 0.25; return x >= 0 ? `rgba(30,170,105,${a})` : `rgba(220,70,90,${a})`; };
-    $("#heat").innerHTML = it.slice(0, 10).map((c, idx) => `<div class="tile ${idx === 0 ? "big" : ""}" style="background:${col(c.change_pct)}" title="${esc(c.symbol)}・最新 ${fmtPrice(c.last)}・24h 成交額 ${fmtBig(c.quote_volume)} USDT"><b>${esc(c.name)}</b><span class="num">${fmtPct(c.change_pct)}</span><small>${fmtBig(c.quote_volume)} USDT</small></div>`).join("");
+    $("#heat").innerHTML = it.slice(0, 10).map((c, idx) => `<div class="tile ${idx === 0 ? "big" : ""}" style="background:${col(c.change_pct)}" title="${esc(c.symbol)}・最新 ${fmtPrice(c.last)}・24h 成交額 ${fmtBig(c.quote_volume)} USDC"><b>${esc(c.name)}</b><span class="num">${fmtPct(c.change_pct)}</span><small>${fmtBig(c.quote_volume)} USDC</small></div>`).join("");
     $("#heat-note").textContent = `${cat.note || ""}・更新 ${fmtTime(cat.updated_at)}`;
   };
 
@@ -479,14 +483,14 @@ async function pageOverview() {
 /* 幣種研究 */
 const chartPrefs = Object.assign({ ma: true, bb: false, vol: true, sub: "rsi", type: "candle" }, JSON.parse(localStorage.getItem("chartPrefs") || "{}"));
 async function pageCoin(sym, params) {
-  sym = sym.toUpperCase();
+  sym = coinKey(sym);
   if (!WATCH.includes(sym)) { try { WATCH = (await api("/api/crypto/overview")).items.map((i) => i.symbol); } catch (e) {} }
   if (!WATCH.includes(sym)) { $("#app").innerHTML = `<div class="card"><div class="empty-state"><b>${esc(sym)} 不在追蹤清單</b><small>公開版只提供 BTC、ETH、ZEC。</small><a class="btn mint" href="#/">回到總覽</a></div></div>`; return; }
   lastCoin = sym; localStorage.setItem("lastCoin", sym); renderNav("coin");
   let tf = params.get("tf") || "4h";
   const s = await api(`/api/crypto/symbol/${sym}`);
   const base = s.base;
-  setTitle("幣種研究", "即時資料・OKX 永續");
+  setTitle("幣種研究", "即時資料・Binance USDC 永續");
   const stars = JSON.parse(localStorage.getItem("stars") || "[]");
   const fg = s.sentiment;
   const fgSeg = fg ? Math.max(1, Math.min(5, Math.ceil(fg.value / 20))) : 0;
@@ -549,13 +553,13 @@ async function pageCoin(sym, params) {
   const renderMkt = () => {
     const t = live.tickers[sym] || s.ticker || {};
     const sn = s.snapshot || {};
-    $("#mkt").innerHTML = [[`24h 成交量（${base}）`, fmtBig(t.volume)], ["24h 成交額（USDT）", fmtBig(t.quote_volume)],
+    $("#mkt").innerHTML = [[`24h 成交量（${base}）`, fmtBig(t.volume)], ["24h 成交額（USDC）", fmtBig(t.quote_volume)],
       ["24h 成交筆數", t.trades ? t.trades.toLocaleString() : "—"], ["RSI(14)・4小時", sn.rsi != null ? `${sn.rsi.toFixed(1)}（${sn.rsi >= 70 ? "超買區" : sn.rsi <= 30 ? "超賣區" : sn.rsi >= 50 ? "動能偏多" : "動能偏弱"}）` : "—"],
       ["MACD 柱・4小時", sn.macd_hist != null ? `${fmtPrice(sn.macd_hist, 2)}（${sn.macd_hist > 0 ? "多方動能" : "空方動能"}）` : "—"],
       ["布林位置・4小時", sn.c != null && sn.bb_up != null ? (sn.c > sn.bb_up ? "高於上軌" : sn.c < sn.bb_lo ? "低於下軌" : sn.c >= sn.bb_mid ? "中軌上方" : "中軌下方") : "—"],
       ["MA20 / MA60・4小時", sn.ma20 != null && sn.ma60 != null ? (sn.ma20 > sn.ma60 ? "MA20 高於 MA60" : "MA20 低於 MA60") : "—"]].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("") +
-      (dv ? [["資金費率（OKX 永續）", dv.funding_rate != null ? dv.funding_rate.toFixed(4) + "%" : "—"], ["未平倉量（OKX）", dv.oi_usd != null ? "$" + (dv.oi_usd / 1e9).toFixed(2) + "B" + (dv.oi_chg_24h != null ? `<small class="${signCls(dv.oi_chg_24h)}"> ${fmtPct(dv.oi_chg_24h)}</small>` : "") : "—"],
-        ["多空帳戶比（OKX）", dv.ls_ratio != null ? dv.ls_ratio.toFixed(2) : "—"], [`強平 多 / 空（${dv.liq_hours ?? "—"}h）`, dv.liq_long != null ? `<span class="down">$${(dv.liq_long / 1e6).toFixed(2)}M</span> / <span class="up">$${(dv.liq_short / 1e6).toFixed(2)}M</span>` : "—"]].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")
+      (dv ? [[`資金費率（Binance${dv.funding_interval_h ? "・每 " + dv.funding_interval_h + " 小時" : ""}）`, dv.funding_rate != null ? dv.funding_rate.toFixed(4) + "%" : "—"], ["未平倉量（Binance USDC 合約）", dv.oi_usd != null ? "$" + (dv.oi_usd / 1e9).toFixed(2) + "B" + (dv.oi_chg_24h != null ? `<small class="${signCls(dv.oi_chg_24h)}"> ${fmtPct(dv.oi_chg_24h)}</small>` : "") : "—"],
+        ["多空帳戶比（Binance）", dv.ls_ratio != null ? dv.ls_ratio.toFixed(2) : "—"], [`強平 多 / 空（WebSocket 收集 ${dv.liq_hours ?? "—"}h）`, dv.liq_long != null ? `<span class="down">$${(dv.liq_long / 1e6).toFixed(2)}M</span> / <span class="up">$${(dv.liq_short / 1e6).toFixed(2)}M</span>` : "—"]].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")
         : ["資金費率", "未平倉量", "多空帳戶比", "近 24h 清算"].map((a) => `<tr class="pending"><td>${a}</td><td>載入中…</td></tr>`).join(""));
   };
   let dv = null;
@@ -688,7 +692,7 @@ async function pageTeam(params) {
   setTitle("AI 團隊研究室", "12 位 AI 代理・即時進度");
   const [ov, lv, aset] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/ai/live"), api("/api/crypto/ai/settings")]);
   WATCH = ov.items.map((i) => i.symbol);
-  let sym = params.get("symbol") || (lv.busy ? lv.current.symbol : lastCoin);
+  let sym = coinKey(params.get("symbol") || (lv.busy ? lv.current.symbol : lastCoin));
   if (!WATCH.includes(sym)) sym = WATCH[0];
   const A = aset.settings;
   const steps = [["資料分析", ["market", "sentiment", "news", "onchain"]], ["多空辯論", ["bull", "bear", "manager"]], ["交易評估", ["trader"]], ["風險審核", ["aggressive", "conservative", "neutral", "pm"]]];
@@ -821,7 +825,7 @@ async function pagePaper() {
   const dur = (ms) => { if (ms == null) return "—"; const m = Math.round(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60; return `${d ? d + "天" : ""}${d || h ? h + "小時" : ""}${mm}分鐘`; };
   const contract = (o) => `<div class="pc-name"><b>${esc(o.symbol)}</b><span class="tag">永續</span><span class="tag lev">${o.leverage || LEV}x</span></div>`;
   const runLink = (o) => o.run_id ? `<a class="ok" href="#/report/${encodeURIComponent(o.run_id)}">AI 報告</a>` : "";
-  const markOf = (o) => { const m = MK.marks[o.symbol]; if (m) return m.px; const t = live.tickers[o.symbol] || MK.tickers[o.symbol]; return t ? t.last : o.mark_price; };
+  const markOf = (o) => { const k = coinKey(o.symbol), m = MK.marks[k]; if (m) return m.px; const t = live.tickers[k] || MK.tickers[k]; return t ? t.last : o.mark_price; };
   const margin = (o) => o.margin || (o.notional ? o.notional / LEV : null);
   const unreal = (o) => { const mk = markOf(o); if (mk == null) return null; return (mk - o.fill_price) * o.qty * (o.side === "LONG" ? 1 : -1) + (o.funding_total || 0); };
   const hist = P.orders.filter((o) => o.status === "closed").sort((a, b) => b.close_ms - a.close_ms);
@@ -829,8 +833,8 @@ async function pagePaper() {
   let tab = pagePaper.tab || "pos", range = pagePaper.range || "3m";
   const RANGES = [["1d", "一天", 1], ["1w", "一週", 7], ["1m", "一個月", 30], ["3m", "三個月", 90]];
   $("#app").innerHTML = `
-  <div class="ro-banner bot-note">${smallIc("info", 15)}<span>全程只模擬：虛擬 ${money(P.initial)} USDT，不連交易所、不下真實訂單。<b>計入永續資金費率，不計手續費</b>。價格全部來自 <b>OKX 永續合約（USDT-SWAP）</b>；顯示用槓桿 <b>${LEV}x 逐倉</b>（保證金 = 名目 ÷ ${LEV}）。</span></div>
-  ${(P.okx_missing || []).length ? `<div class="callout" style="margin-bottom:12px"><b>注意</b><span>OKX 沒有 ${P.okx_missing.map(esc).join("、")} 的永續合約，這些幣改用 Binance 現貨價格模擬。</span></div>` : ""}
+  <div class="ro-banner bot-note">${smallIc("info", 15)}<span>全程只模擬：虛擬 ${money(P.initial)} USDC，不連交易所、不下真實訂單。<b>計入永續資金費率，不計手續費</b>。價格全部來自 <b>Binance USDⓈ-M 永續合約（USDC 本位）</b>（v1.0.7 以前的舊紀錄是 OKX USDT 永續，金額直接沿用）；顯示用槓桿 <b>${LEV}x 逐倉</b>（保證金 = 名目 ÷ ${LEV}）。</span></div>
+  ${P.engine && P.engine.last_error && /Binance/.test(P.engine.last_error) ? `<div class="callout" style="margin-bottom:12px"><b>注意</b><span>後台暫時連不上 Binance：${esc(P.engine.last_error)}（不會改用其他交易所，恢復後自動補算）</span></div>` : ""}
   <div class="grid-4">
     <div class="card kcard"><small>目前權益（含未實現）</small><div class="row"><span class="big num" id="pp-eq">—</span></div><small class="num" id="pp-eq2"></small></div>
     <div class="card kcard"><small>已實現損益（含資金費）</small><div class="row"><span class="big num ${signCls(P.realized_pnl)}">${usd(P.realized_pnl)}</span></div><small class="num">價差 ${usd(P.price_pnl)}・資金費 ${usd(P.funding_net, 4)}</small></div>
@@ -841,27 +845,27 @@ async function pagePaper() {
     <div class="card-h"><div class="tabs pp-tabs" id="pp-tabs">
       <button class="tab" data-t="pos">倉位（${P.open.length}）</button><button class="tab" data-t="ord">當前委託（${P.pending.length}）</button>
       <button class="tab" data-t="other">取消 / 拒單（${other.length}）</button></div>
-      <div class="right"><span class="chip-muted" id="pp-src">OKX 永續・標記價格即時</span></div></div>
+      <div class="right"><span class="chip-muted" id="pp-src">Binance USDC 永續・標記價格即時</span></div></div>
     <div id="pp-body"></div></section>
   <section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.list}倉位歷史</h2><div class="right"><span class="chip-muted">共 ${hist.length} 筆・已實現盈虧含資金費</span></div></div>
     <div id="pp-hist"></div></section>
   <section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.trendUp}權益曲線</h2><div class="right"><span class="chip-muted">已實現（平倉 + 資金費）＋ 目前含未實現</span></div></div>
     <div id="eq-chart" style="height:240px"></div></section>
   <div class="set-grid" style="margin-top:16px">
-    <section class="card"><div class="card-h"><h2>${ICON.bolt}資金費紀錄（OKX 永續實際結算）</h2><div class="right"><span class="chip-muted num">已付 ${usd(P.funding_paid, 4)}・已收 ${usd(P.funding_received, 4)}</span></div></div>
+    <section class="card"><div class="card-h"><h2>${ICON.bolt}資金費紀錄（實際結算；v1.0.8 起為 Binance USDC 永續）</h2><div class="right"><span class="chip-muted num">已付 ${usd(P.funding_paid, 4)}・已收 ${usd(P.funding_received, 4)}</span></div></div>
       ${P.funding.length ? `<table class="tbl"><thead><tr><th>結算時間（台北）</th><th>合約</th><th>方向</th><th>費率</th><th>結算價</th><th>金額</th></tr></thead><tbody>
         ${P.funding.slice().reverse().map((f) => `<tr><td class="num">${fmtTime(f.funding_ms)}</td><td>${esc(f.symbol)}</td><td>${SIDE[f.side][0]}</td><td class="num">${(f.rate * 100).toFixed(4)}%</td><td class="num">${fmtPrice(f.price)}</td><td class="num ${signCls(f.payment)}">${usd(f.payment, 4)}</td></tr>`).join("")}</tbody></table>`
-        : `<div class="empty-state" style="height:110px"><b>尚無資金費紀錄</b><small>持倉跨過 OKX 結算時間（通常每 8 小時：台北 00:00、08:00、16:00）才會計入。</small></div>`}</section>
+        : `<div class="empty-state" style="height:110px"><b>尚無資金費紀錄</b><small>持倉跨過 Binance 結算時間才會計入（BTC / ETH 每 8 小時：台北 00:00、08:00、16:00；ZEC 每 4 小時）。</small></div>`}</section>
     <section class="card"><div class="card-h"><h2>${ICON.shield}模擬規則</h2></div>
       <ul class="bullets" style="font-size:12.8px;line-height:1.7">
-        <li>帳戶：虛擬 ${money(P.initial)} USDT；權益 = 初始資金 + 已實現價差 + 累計資金費；手續費 = 0。</li>
+        <li>帳戶：虛擬 ${money(P.initial)} USDC（v1.0.7 以前的舊紀錄以 USDT 計，數值直接沿用）；權益 = 初始資金 + 已實現價差 + 累計資金費；手續費 = 0。</li>
         <li>下單：AI 做多 / 做空時以 AI 進場價掛限價單；市價已比進場價好就立即以市價成交；${P.pending_hours} 小時內沒觸及就取消。價位順序不合理或市價已越過停損則拒單。</li>
         <li>部位：風險 = 權益 × ${P.risk_pct}%，數量 = 風險 ÷ |成交價 − 停損|，名目上限 = 權益 × AI 建議部位 %。</li>
-        <li>槓桿與強平：顯示用預設 ${LEV}x 逐倉，保證金 = 名目 ÷ ${LEV}，收益率 = 盈虧 ÷ 保證金。預估強平價 = 開倉價 × (1 ∓ 1/${LEV}) ÷ (1 ∓ 維持保證金率)，維持保證金率用 OKX 第 1 檔（BTC / ETH / ZEC 各自查詢）。AI 停損通常在進場價 1–3% 內，比 10x 強平價（約 9.5%）近；本模擬不另外模擬強平。</li>
+        <li>槓桿與強平：顯示用預設 ${LEV}x 逐倉，保證金 = 名目 ÷ ${LEV}，收益率 = 盈虧 ÷ 保證金。預估強平價 = 開倉價 × (1 ∓ 1/${LEV}) ÷ (1 ∓ 維持保證金率)，維持保證金率用 Binance 第 1 檔（BTC / ETH 0.4%、ZEC 1%）。AI 停損通常在進場價 1–3% 內，比 10x 強平價（約 9.5%）近；本模擬不另外模擬強平。</li>
         <li>每個幣種同時一筆：反向訊號先平倉再下新單；同向訊號只更新停損 / 停利（不加碼、不延長到期）；掛單中則改掛新單；觀望不動。</li>
-        <li>出場：後台用 OKX 永續即時成交（WebSocket trades，斷線時改用 1 分 K 最高 / 最低價）檢查，觸及停損 / 停利即出場；同一根同時觸及視為先停損；成交滿持有期限以市價平倉：持有期限 = AI 設定的持有天數 × 24 小時（目前 ${P.hold_hours} 小時）；改為 24 小時之前下的單維持原本 48 小時。</li>
-        <li>資金費：OKX 實際資金費率，在結算時仍持倉才計入；做多付正費率、做空收正費率。</li>
-        <li>標記價格：網頁用 OKX WebSocket 標記價格（mark-price）頻道即時更新；未實現盈虧 = (標記價 − 開倉價) × 數量 × 方向 + 已計資金費。</li>
+        <li>出場：後台用 Binance USDC 永續即時成交（WebSocket aggTrade，斷線時改用 1 分 K 最高 / 最低價）檢查，觸及停損 / 停利即出場；同一根同時觸及視為先停損；成交滿持有期限以市價平倉：持有期限 = AI 設定的持有天數 × 24 小時（目前 ${P.hold_hours} 小時）；改為 24 小時之前下的單維持原本 48 小時。</li>
+        <li>資金費：Binance USDC 永續實際資金費率（v1.0.7 以前為 OKX），在結算時仍持倉才計入；做多付正費率、做空收正費率。</li>
+        <li>標記價格：網頁用 Binance WebSocket 標記價格（markPrice@1s）串流即時更新；未實現盈虧 = (標記價 − 開倉價) × 數量 × 方向 + 已計資金費。</li>
       </ul>
       <p class="note">資料更新：開倉 / 平倉 / 資金費 / 掛單取消時後台立即推送；上次 ${fmtTime(P.generated_at)}（台北）。</p></section>
   </div>`;
@@ -870,12 +874,12 @@ async function pagePaper() {
     <table class="tbl pos-tbl"><thead><tr><th>合約</th><th>數量</th><th>開倉價格</th><th>標記價格</th><th>強平價格</th><th>保證金</th><th>盈虧（收益率）</th><th>停損 / 停利</th><th>到期時間（台北）</th><th></th></tr></thead><tbody>
     ${P.open.map((o) => `<tr><td>${contract(o)}<small class="dim">${o.margin_mode || "逐倉"}・${SIDE[o.side][0]}</small></td>
       <td class="num ${SIDE[o.side][1]}"><b>${qtyTxt(o)}</b></td><td class="num">${fmtPrice(o.fill_price)}</td><td class="num" data-pp-mk="${o.id}">—</td>
-      <td class="num warn">${o.liq_price ? fmtPrice(o.liq_price) : "—"}</td><td class="num">${money(margin(o))}<small class="dim"> USDT</small></td>
+      <td class="num warn">${o.liq_price ? fmtPrice(o.liq_price) : "—"}</td><td class="num">${money(margin(o))}<small class="dim"> ${unitOf(o.symbol)}</small></td>
       <td class="num" data-pp-u="${o.id}">—</td><td class="num"><span class="down">${fmtPrice(o.stop)}</span> / <span class="up">${fmtPrice(o.take_profit)}</span></td>
       <td class="num">${fmtTime(o.hold_until)}</td><td>${runLink(o)}</td></tr>`).join("")}</tbody></table>
     <div class="pos-cards">${P.open.map((o) => `<div class="pcard">
       <div class="pc-h">${contract(o)}<span class="tag">${o.margin_mode || "逐倉"}</span><span class="tag ${o.side === "LONG" ? "t-up" : "t-down"}">${SIDE[o.side][0]}</span></div>
-      <div class="pc-pnl"><div><small>盈虧（USDT）</small><b class="num" data-pp-u2="${o.id}">—</b></div><div class="r"><small>收益率</small><b class="num" data-pp-r2="${o.id}">—</b></div></div>
+      <div class="pc-pnl"><div><small>盈虧（${unitOf(o.symbol)}）</small><b class="num" data-pp-u2="${o.id}">—</b></div><div class="r"><small>收益率</small><b class="num" data-pp-r2="${o.id}">—</b></div></div>
       <div class="pc-grid"><div><small>數量</small><b class="num ${SIDE[o.side][1]}">${qtyTxt(o)}</b></div><div><small>開倉價格</small><b class="num">${fmtPrice(o.fill_price)}</b></div><div><small>標記價格</small><b class="num" data-pp-mk2="${o.id}">—</b></div>
         <div><small>強平價格</small><b class="num warn">${o.liq_price ? fmtPrice(o.liq_price) : "—"}</b></div><div><small>保證金</small><b class="num">${money(margin(o))}</b></div><div><small>停損 / 停利</small><b class="num"><span class="down">${fmtPrice(o.stop)}</span> / <span class="up">${fmtPrice(o.take_profit)}</span></b></div></div>
       <div class="pc-foot">持有 ${o.hold_hours || P.hold_hours} 小時到期 ${fmtTime(o.hold_until)}（台北）・${runLink(o)}</div></div>`).join("")}</div>`
@@ -899,7 +903,7 @@ async function pagePaper() {
     return `<div class="tabs compact pp-range" id="pp-range">${RANGES.map(([k, t]) => `<button class="tab outline ${k === range ? "active" : ""}" data-r="${k}">${t}</button>`).join("")}</div>
     ${rows.length ? `<div class="hist-cards">${rows.map((o) => `<div class="pcard">
       <div class="pc-h">${contract(o)}<span class="tag">${o.margin_mode || "逐倉"}</span><span class="tag ${o.side === "LONG" ? "t-up" : "t-down"}">${SIDE[o.side][0]}</span><span class="pc-state">完全平倉</span></div>
-      <div class="pc-pnl"><div><small>已實現盈虧（含資金費）</small><b class="num ${signCls(o.pnl_net)}">${usd(o.pnl_net)} USDT</b></div><div class="r"><small>收益率</small><b class="num ${signCls(o.roi_pct)}">${o.roi_pct == null ? "—" : fmtPct(o.roi_pct)}</b></div></div>
+      <div class="pc-pnl"><div><small>已實現盈虧（含資金費）</small><b class="num ${signCls(o.pnl_net)}">${usd(o.pnl_net)} ${unitOf(o.symbol)}</b></div><div class="r"><small>收益率</small><b class="num ${signCls(o.roi_pct)}">${o.roi_pct == null ? "—" : fmtPct(o.roi_pct)}</b></div></div>
       <div class="pc-grid"><div><small>已平倉量</small><b class="num">${qtyTxt({ ...o, qty: o.closed_qty || o.qty })}</b></div><div><small>開倉價格</small><b class="num">${fmtPrice(o.fill_price)}</b></div><div><small>平倉均價</small><b class="num">${fmtPrice(o.close_price)}</b></div>
         <div><small>最大未平倉量</small><b class="num">${qtyTxt({ ...o, qty: o.max_qty || o.qty })}</b></div><div><small>開倉時間</small><b class="num">${fmtTime(o.fill_at)}</b></div><div><small>最後平倉時間</small><b class="num">${fmtTime(o.close_at)}</b></div></div>
       <div class="pc-foot"><span>持續 ${dur(o.duration_ms ?? (o.close_ms - o.fill_ms))}</span><span>出場原因 <b class="${REASON(o.close_reason) === "停利" ? "up" : REASON(o.close_reason) === "停損" ? "down" : ""}">${esc(REASON(o.close_reason))}</b></span><span>價差 ${usd(o.pnl_price)}・資金費 ${usd(o.funding_total, 4)}</span>${runLink(o)}</div></div>`).join("")}</div>`
@@ -939,15 +943,15 @@ async function pagePaper() {
       const mk = markOf(o), v = unreal(o), m = margin(o), roi = v != null && m ? (v / m) * 100 : null;
       setTxt(`[data-pp-mk="${o.id}"],[data-pp-mk2="${o.id}"]`, mk == null ? "—" : fmtPrice(mk));
       if (v != null) {
-        setTxt(`[data-pp-u="${o.id}"]`, `<b>${usd(v)} USDT</b><br><span>${roi == null ? "" : fmtPct(roi)}</span>`, signCls(v));
+        setTxt(`[data-pp-u="${o.id}"]`, `<b>${usd(v)} ${unitOf(o.symbol)}</b><br><span>${roi == null ? "" : fmtPct(roi)}</span>`, signCls(v));
         setTxt(`[data-pp-u2="${o.id}"]`, usd(v), signCls(v)); setTxt(`[data-pp-r2="${o.id}"]`, roi == null ? "—" : fmtPct(roi), signCls(v));
         u += v;
       }
     });
-    P.pending.forEach((o) => { const t = live.tickers[o.symbol] || MK.tickers[o.symbol]; if (t) setTxt(`[data-pp-px="${o.symbol}"],[data-pp-px2="${o.symbol}"]`, fmtPrice(t.last)); });
+    P.pending.forEach((o) => { const t = live.tickers[coinKey(o.symbol)] || MK.tickers[coinKey(o.symbol)]; if (t) setTxt(`[data-pp-px="${o.symbol}"],[data-pp-px2="${o.symbol}"]`, fmtPrice(t.last)); });
     const eq = P.realized_equity + u;
     $("#pp-eq").textContent = money(eq); $("#pp-eq").className = "big num " + signCls(eq - P.initial);
-    $("#pp-eq2").textContent = `${usd(eq - P.initial)} USDT（${fmtPct(((eq - P.initial) / P.initial) * 100)}）・未實現 ${P.open.length ? usd(u) : "—"}`;
+    $("#pp-eq2").textContent = `${usd(eq - P.initial)} USDC（${fmtPct(((eq - P.initial) / P.initial) * 100)}）・未實現 ${P.open.length ? usd(u) : "—"}`;
     const now = Math.floor(Date.now() / 1000) + TZ_SHIFT;
     const pts = base.slice(); if (!pts.length || pts[pts.length - 1].time < now) pts.push({ time: now, value: eq });
     area.setData(pts);
@@ -1060,15 +1064,15 @@ async function pageSettings() {
   <div class="set-grid" style="margin-top:16px">
     <section class="card"><div class="card-h"><h2>${ICON.radio}即時行情（你的瀏覽器直連）</h2><div class="right"><span class="pill high" id="ws-pill">● 連線中</span></div></div>
       <div class="cfg">
-        <div>即時報價</div><div class="num">OKX 公開 WebSocket<br><small class="dim">${esc((ms.quote && ms.quote.url) || "wss://ws.okx.com:8443/ws/v5/public")}（trades + tickers）</small></div>
+        <div>即時報價</div><div class="num">Binance USDⓈ-M 公開 WebSocket<br><small class="dim">${esc((ms.quote && ms.quote.url) || "wss://fstream.binance.com/market/stream")}（aggTrade + ticker + markPrice）</small></div>
         <div>報價狀態</div><div class="num" id="q-last"></div>
-        <div>K 線 REST / WS</div><div class="num">${esc(ms.rest_base)}<br>${esc(ms.ws_base)}（OKX 永續 candle5m / 1H / 4H / 1Dutc）</div>
+        <div>K 線 REST / WS</div><div class="num">${esc(ms.rest_base)}<br>${esc(ms.ws_base)}（Binance USDC 永續 kline 5m / 15m / 1h / 4h / 1d）</div>
         <div>K 線最後資料</div><div class="num" id="ws-last">${fmtTime(ms.last_msg_at)}・累計 ${ms.messages.toLocaleString()} 則・重連 ${ms.reconnects} 次</div>
-        <div>後台價格</div><div>模擬交易成交 / 停損停利 / 未實現損益、AI 分析：OKX 永續合約（BTC/ETH/ZEC-USDT-SWAP）</div>
+        <div>後台價格</div><div>模擬交易成交 / 停損停利 / 未實現損益、AI 分析：Binance USDⓈ-M 永續合約（BTCUSDC / ETHUSDC / ZECUSDC）</div>
         <div>追蹤清單</div><div>${S.watchlist.map((x) => esc(baseOf(x))).join("、")}</div>
         <div>訊號週期</div><div>${S.signal_timeframes.map((t) => TF_LABEL[t]).join("、")}</div>
       </div>
-      <p class="note">全部資料皆來自 OKX 永續合約（USDT-SWAP），不使用現貨。報價只走 WebSocket（顯示價 = 最新成交 trades.px；24h 漲跌 = (last − open24h) / open24h，滾動 24 小時）。若連不上 OKX 會顯示「無法連線」。</p></section>
+      <p class="note">全部資料皆來自 Binance USDⓈ-M 永續合約（USDC 本位），不使用現貨。報價只走 WebSocket（顯示價 = 最新成交 aggTrade；24h 漲跌 = (last − open) / open，滾動 24 小時）。若連不上 Binance 會顯示「無法連線」，不會自動改用其他交易所。v1.0.7 以前的研究報告與模擬交易紀錄是 OKX USDT 永續（代號 BTCUSDT 等），保留原樣。</p></section>
     <section class="card"><div class="card-h"><h2>${ICON.bolt}訊號門檻（即時層，不使用 AI）</h2></div>
       <table class="tbl"><tbody>
         <tr><td>RSI</td><td class="num">${S.rsi.enabled ? `週期 ${S.rsi.period}・超買 ${S.rsi.overbought}・超賣 ${S.rsi.oversold}` : "關閉"}</td></tr>
@@ -1080,12 +1084,12 @@ async function pageSettings() {
   </div>
   <section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.chain}資料來源</h2></div>
     <table class="tbl"><thead><tr><th>類別</th><th>來源（皆免金鑰）</th><th>更新方式</th></tr></thead><tbody>
-      <tr><td>即時價格 / 24h 漲跌</td><td>OKX 永續 WebSocket（trades 成交價、tickers 滾動 24h%）</td><td class="ok c">瀏覽器即時</td></tr>
-      <tr><td>市場板塊（成交額前 10）</td><td>OKX SWAP tickers（載入時 REST 一次 + WebSocket 更新）</td><td class="ok c">瀏覽器即時</td></tr>
-      <tr><td>K 線 / 指標 / 技術訊號</td><td>OKX 永續 K 線（REST candles / history-candles + business WebSocket）</td><td class="ok c">瀏覽器即時</td></tr>
-      <tr><td>模擬交易價格、AI 分析價格</td><td>OKX 永續合約（WebSocket trades；備援 1 分 K 高低點）</td><td class="c">後台</td></tr>
+      <tr><td>即時價格 / 24h 漲跌</td><td>Binance USDC 永續 WebSocket（aggTrade 成交價、ticker 滾動 24h%）</td><td class="ok c">瀏覽器即時</td></tr>
+      <tr><td>市場板塊（成交額前 10）</td><td>Binance USDC 永續 24h tickers（載入時 REST 一次 + WebSocket 更新）</td><td class="ok c">瀏覽器即時</td></tr>
+      <tr><td>K 線 / 指標 / 技術訊號</td><td>Binance USDC 永續 K 線（REST /fapi/v1/klines + WebSocket kline）</td><td class="ok c">瀏覽器即時</td></tr>
+      <tr><td>模擬交易價格、AI 分析價格</td><td>Binance USDC 永續合約（WebSocket aggTrade；備援 1 分 K 高低點）</td><td class="c">後台</td></tr>
       <tr><td>恐懼貪婪指數</td><td>alternative.me</td><td class="ok c">瀏覽器每 10 分鐘</td></tr>
-      <tr><td>資金費率 / 未平倉量 / 多空比 / 清算</td><td>OKX 公開 API</td><td class="c">後台推送快照</td></tr>
+      <tr><td>資金費率 / 未平倉量 / 多空比 / 清算</td><td>Binance USDⓈ-M 公開 API（強平由 WebSocket forceOrder 收集）</td><td class="c">後台推送快照</td></tr>
       <tr><td>加密新聞</td><td>CoinDesk / Cointelegraph / Decrypt / The Block RSS</td><td class="c">後台推送快照</td></tr>
       <tr><td>鏈上數據</td><td>BTC：BTC 鏈上擁堵度（mempool.space）、blockchain.info；ETH / ZEC：Blockchair</td><td class="c">分析時</td></tr>
       <tr><td>AI 決策與報告</td><td>TradingAgents（12 位 AI 代理）</td><td class="c">每次分析完成</td></tr>
@@ -1093,7 +1097,7 @@ async function pageSettings() {
   on("data_updated", () => route());
   const upd = () => { const m = MK.status, p = $("#ws-pill"), l = $("#ws-last"); if (!p) return;
     const q = m.quote || {}, r = quoteStatusText(q);
-    p.className = "pill " + (q.connected ? "done" : "high"); p.textContent = q.connected ? "● OKX 報價已連線" : q.state === "failed" ? "● OKX 報價無法連線" : "● OKX 報價未連線";
+    p.className = "pill " + (q.connected ? "done" : "high"); p.textContent = q.connected ? "● Binance 報價已連線" : q.state === "failed" ? "● Binance 報價無法連線" : "● Binance 報價未連線";
     $("#q-last").textContent = `${r.text}・累計 ${(q.messages || 0).toLocaleString()} 則・重連 ${q.reconnects || 0} 次${q.last_close && !q.connected ? "・最後關閉 " + q.last_close : ""}`;
     const k = m.kline || {}; l.textContent = `${k.connected ? "● 已連線" : k.state === "failed" ? "● 無法連線" : "● 未連線"}・${fmtTime(k.last_msg_at)}・累計 ${(k.messages || 0).toLocaleString()} 則・重連 ${k.reconnects || 0} 次`; };
   const iv = setInterval(upd, 2000); pageCleanup.push(() => clearInterval(iv));
