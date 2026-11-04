@@ -847,7 +847,7 @@ async function pagePaper() {
       <button class="tab" data-t="other">取消 / 拒單（${other.length}）</button></div>
       <div class="right"><span class="chip-muted" id="pp-src">Binance USDC 永續・標記價格即時</span></div></div>
     <div id="pp-body"></div></section>
-  <section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.list}倉位歷史</h2><div class="right"><span class="chip-muted">共 ${hist.length} 筆・已實現盈虧含資金費</span></div></div>
+  <section class="card paper-history" style="margin-top:16px"><div class="card-h"><h2>${ICON.list}倉位歷史</h2><div class="right"><span class="chip-muted">共 ${hist.length} 筆・已實現盈虧含資金費</span></div></div>
     <div id="pp-hist"></div></section>
   <section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.trendUp}權益曲線</h2><div class="right"><span class="chip-muted">已實現（平倉 + 資金費）＋ 目前含未實現</span></div></div>
     <div id="eq-chart" style="height:240px"></div></section>
@@ -901,12 +901,12 @@ async function pagePaper() {
     const days = RANGES.find((r) => r[0] === range)[2], since = Date.now() - days * 86400000;
     const rows = hist.filter((o) => o.close_ms >= since);
     return `<div class="tabs compact pp-range" id="pp-range">${RANGES.map(([k, t]) => `<button class="tab outline ${k === range ? "active" : ""}" data-r="${k}">${t}</button>`).join("")}</div>
-    ${rows.length ? `<div class="hist-cards">${rows.map((o) => `<div class="pcard">
-      <div class="pc-h">${contract(o)}<span class="tag">${o.margin_mode || "逐倉"}</span><span class="tag ${o.side === "LONG" ? "t-up" : "t-down"}">${SIDE[o.side][0]}</span><span class="pc-state">完全平倉</span></div>
-      <div class="pc-pnl"><div><small>已實現盈虧（含資金費）</small><b class="num ${signCls(o.pnl_net)}">${usd(o.pnl_net)} ${unitOf(o.symbol)}</b></div><div class="r"><small>收益率</small><b class="num ${signCls(o.roi_pct)}">${o.roi_pct == null ? "—" : fmtPct(o.roi_pct)}</b></div></div>
-      <div class="pc-grid"><div><small>已平倉量</small><b class="num">${qtyTxt({ ...o, qty: o.closed_qty || o.qty })}</b></div><div><small>開倉價格</small><b class="num">${fmtPrice(o.fill_price)}</b></div><div><small>平倉均價</small><b class="num">${fmtPrice(o.close_price)}</b></div>
-        <div><small>最大未平倉量</small><b class="num">${qtyTxt({ ...o, qty: o.max_qty || o.qty })}</b></div><div><small>開倉時間</small><b class="num">${fmtTime(o.fill_at)}</b></div><div><small>最後平倉時間</small><b class="num">${fmtTime(o.close_at)}</b></div></div>
-      <div class="pc-foot"><span>持續 ${dur(o.duration_ms ?? (o.close_ms - o.fill_ms))}</span><span>出場原因 <b class="${REASON(o.close_reason) === "停利" ? "up" : REASON(o.close_reason) === "停損" ? "down" : ""}">${esc(REASON(o.close_reason))}</b></span><span>價差 ${usd(o.pnl_price)}・資金費 ${usd(o.funding_total, 4)}</span>${runLink(o)}</div></div>`).join("")}</div>`
+    ${rows.length ? `<div class="hist-rows">${rows.map((o) => `<article class="hist-row">
+      <div class="hist-head"><div class="hist-contract">${coinIcon(baseOf(o.symbol), 22)}${contract(o)}<span class="tag">${esc(o.margin_mode || "逐倉")}</span><span class="tag ${o.side === "LONG" ? "t-up" : "t-down"}">${SIDE[o.side][0]}</span><span class="hist-state">完全平倉</span></div>
+        <div class="hist-times"><span>開倉時間 <time class="num">${fmtTime(o.fill_at)}</time></span><span>最後平倉時間 <time class="num">${fmtTime(o.close_at)}</time></span><span>持續 ${dur(o.duration_ms ?? (o.close_ms - o.fill_ms))}</span></div></div>
+      <dl class="hist-metrics"><div><dt>已實現盈虧（含資金費）</dt><dd class="num ${signCls(o.pnl_net)}">${usd(o.pnl_net)} ${unitOf(o.symbol)}</dd></div><div><dt>收益率</dt><dd class="num ${signCls(o.roi_pct)}">${o.roi_pct == null ? "—" : fmtPct(o.roi_pct)}</dd></div>
+        <div><dt>已平倉量</dt><dd class="num">${qtyTxt({ ...o, qty: o.closed_qty || o.qty })}</dd></div><div><dt>開倉價格</dt><dd class="num">${fmtPrice(o.fill_price)}</dd></div><div><dt>平倉均價</dt><dd class="num">${fmtPrice(o.close_price)}</dd></div><div><dt>最大未平倉量</dt><dd class="num">${qtyTxt({ ...o, qty: o.max_qty || o.qty })}</dd></div></dl>
+      <div class="hist-foot"><span>出場原因 <b class="${REASON(o.close_reason) === "停利" ? "up" : REASON(o.close_reason) === "停損" ? "down" : ""}">${esc(REASON(o.close_reason))}</b></span><span>價差 ${usd(o.pnl_price)}・資金費 ${usd(o.funding_total, 4)}</span>${runLink(o)}</div></article>`).join("")}</div>`
       : `<div class="empty-state" style="height:110px">${ICON.paper}<b>${RANGES.find((r) => r[0] === range)[1]}內沒有已平倉的倉位</b></div>`}`;
   };
   const otherBody = () => other.length ? `<table class="tbl pos-tbl"><thead><tr><th>合約</th><th>委託價格</th><th>停損</th><th>停利</th><th>AI 部位上限</th><th>信心</th><th>狀態</th><th>下單時間（台北）</th><th>取消 / 拒單時間（台北）</th><th>原因</th><th></th></tr></thead><tbody>
