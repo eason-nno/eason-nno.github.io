@@ -135,11 +135,9 @@ const ROLES = [
   { key: "pm", team: "投資組合經理", name: "投資組合經理", icon: "crown", tier: "deep", desc: "最終決策：做多 / 做空 / 觀望 與停損", col: 4 },
 ];
 
-/* 公開版：沒有登入、沒有寫入動作。手動分析 / 改設定請傳訊息給 Grok Bot */
+/* 公開版：沒有登入、沒有寫入動作。 */
 const READONLY = true;
-const BOT_NOTE = `要<b>手動分析</b>或<b>修改設定</b>，請直接傳訊息給 Grok Bot，例如「跑一次 BTC」、「改成每 2 小時跑 ETH」、「不執行時段改成 01–06」。後台跑完會自動更新這個網站（約 1–3 分鐘）。`;
-const noteHTML = () => `<div class="ro-banner bot-note">${smallIc("chat", 15)}<span>${BOT_NOTE}</span></div>`;
-function renderUser() { const box = $("#user-box"); if (box) box.innerHTML = `<span class="avatar on" title="公開版：唯讀">E</span><span class="u-name">EShenn<small>公開版・唯讀</small></span>`; }
+const noteHTML = () => "";
 
 /* AI 判斷層共用 */
 const DIRS = { LONG: { t: "做多", c: "up", v: "long", pill: "low" }, SHORT: { t: "做空", c: "down", v: "short", pill: "high" }, WAIT: { t: "觀望", c: "warn", v: "wait", pill: "mid" } };
@@ -153,7 +151,7 @@ function aiPill(ai, status) {
   return `<span class="pill ${d.pill}" title="AI 最終決策・${esc(fmtTime(ai.created_at))}">${d.t}・${ai.confidence}</span><small class="dim" style="display:block;margin-top:3px">${esc(fmtTime(ai.created_at))}</small>`;
 }
 function verdictHTML(ai, side) {
-  if (!ai) return `<div class="verdict empty"><div class="v-main"><b>尚未執行 AI 分析</b><small>等待排程，或傳訊息給 Grok Bot 手動分析</small></div>${side || ""}</div>`;
+  if (!ai) return `<div class="verdict empty"><div class="v-main"><b>尚未執行 AI 分析</b><small>等待排程，或由本機控制台手動分析</small></div>${side || ""}</div>`;
   const dec = ai.result?.decision || {}; const d = DIRS[ai.decision] || DIRS.WAIT;
   return `<div class="verdict ${d.v}"><div class="v-main"><small>AI 最終決策・持有約 ${holdTxt(ai.settings?.holding_period_days ?? ai.result?.settings?.holding_period_days ?? 1)}</small><b class="${d.c}">${d.t}<span class="conf">信心 ${ai.confidence}/100</span></b>
     <small>${esc(fmtTime(ai.created_at))}（台北）・${esc(TRIG[ai.trigger] || "")}・風險 ${esc(dec.risk_level || "—")}</small></div>${side || ""}</div>
@@ -203,8 +201,7 @@ function quoteStatusText(q) {
 }
 function updateLivePill() {
   const p = $("#live-pill"), q = (MK.status || {}).quote, r = quoteStatusText(q);
-  p.classList.toggle("on", r.cls === "on"); p.classList.toggle("off", r.cls === "off");
-  $("#live-text").textContent = r.text;
+  if (p) { p.classList.toggle("on", r.cls === "on"); p.classList.toggle("off", r.cls === "off"); $("#live-text").textContent = r.text; }
   const n = $("#q-note"); if (n) { n.textContent = `報價：Binance USDⓈ-M 永續合約（USDC 本位）成交價・${r.text}${(MK.status || {}).data_error ? "・" + MK.status.data_error : ""}`; n.className = "note q-note " + r.cls; }
 }
 /** 把模型 / API 的原始錯誤轉成簡短的繁中說明（不顯示原始 JSON）。 */
@@ -278,14 +275,18 @@ let lastCoin = coinKey(localStorage.getItem("lastCoin") || "BTCUSDC");
 function renderNav(active) {
   const items = [["home", "#/", "總覽", ICON.home], ["coin", `#/coin/${lastCoin}`, "幣種研究", ICON.coin], ["team", "#/team", "AI 團隊", ICON.team],
     ["paper", "#/paper", "模擬交易", ICON.paper], ["reports", "#/reports", "研究報告", ICON.report]];
-  $("#nav").innerHTML = items.map(([k, h, t, ic]) => `<a href="${h}" class="${k === active ? "active" : ""}">${ic}<span>${t}</span></a>`).join("") +
-    `<div class="sep"></div><a href="#/settings" class="${active === "settings" ? "active" : ""}">${ICON.gear}<span>設定</span></a>`;
+  $("#nav").innerHTML = items.map(([k, h, t, ic]) => k === "paper" ?
+    `<details class="nav-dropdown ${active === k ? "active" : ""}"><summary>${ic}<span>${t}</span><span class="chevron">▾</span></summary><div class="nav-menu"><a href="#/paper" ${location.hash === "#/paper" ? 'aria-current="page"' : ""}>AI 團隊策略</a><a href="#/paper/new" ${location.hash === "#/paper/new" ? 'aria-current="page"' : ""}>新策略</a></div></details>` :
+    `<a href="${h}" class="${k === active ? "active" : ""}" ${k === active ? 'aria-current="page"' : ""}>${ic}<span>${t}</span></a>`).join("") +
+    `<a href="#/settings" class="${active === "settings" ? "active" : ""}">${ICON.gear}<span>設定</span></a>`;
+  const dd = $(".nav-dropdown");
+  dd.addEventListener("keydown", e => { if (e.key === "Escape") { dd.open = false; $("summary", dd).focus(); } });
 }
 function sparkSVG(vals, w = 130, h = 36) {
   if (!vals || vals.length < 2) return `<svg width="${w}" height="${h}"></svg>`;
   const mn = Math.min(...vals), mx = Math.max(...vals), r = mx - mn || 1;
   const pts = vals.map((v, i) => [(i / (vals.length - 1)) * w, h - 3 - ((v - mn) / r) * (h - 6)]);
-  const up = vals[vals.length - 1] >= vals[0], c = up ? "#2fd38a" : "#f0596b", id = "g" + Math.random().toString(36).slice(2, 8);
+  const up = vals[vals.length - 1] >= vals[0], c = up ? "#0ecb81" : "#f6465d", id = "g" + Math.random().toString(36).slice(2, 8);
   const line = pts.map((p) => p.map((x) => x.toFixed(1)).join(",")).join(" ");
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="stroke:none"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".35"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs><polygon points="0,${h} ${line} ${w},${h}" fill="url(#${id})"/><polyline points="${line}" fill="none" stroke="${c}" stroke-width="1.6"/></svg>`;
 }
@@ -319,13 +320,13 @@ function sigHTML(s, isNew) {
     <div class="sig-d">${esc(s.detail)}・${fmtPrice(s.price)} ${src}</div></div></div>`;
 }
 const chartBase = (h) => ({
-  height: h, layout: { attributionLogo: false, background: { type: "solid", color: "transparent" }, textColor: "#8193ad", fontSize: 11, fontFamily: "Inter, Noto Sans CJK TC, sans-serif" },
-  grid: { vertLines: { color: "rgba(40,58,86,.35)" }, horzLines: { color: "rgba(40,58,86,.35)" } },
-  rightPriceScale: { borderColor: "#1c2a40", minimumWidth: 78 }, timeScale: { borderColor: "#1c2a40", timeVisible: true, secondsVisible: false },
-  crosshair: { mode: 0, vertLine: { color: "#4a5d7c", labelBackgroundColor: "#22324a" }, horzLine: { color: "#4a5d7c", labelBackgroundColor: "#22324a" } },
+  height: h, layout: { attributionLogo: false, background: { type: "solid", color: "transparent" }, textColor: "#929aa5", fontSize: 11, fontFamily: "Inter, Noto Sans CJK TC, sans-serif" },
+  grid: { vertLines: { color: "rgba(71,77,87,.35)" }, horzLines: { color: "rgba(71,77,87,.35)" } },
+  rightPriceScale: { borderColor: "#333b47", minimumWidth: 78 }, timeScale: { borderColor: "#333b47", timeVisible: true, secondsVisible: false },
+  crosshair: { mode: 0, vertLine: { color: "#929aa5", labelBackgroundColor: "#333b47" }, horzLine: { color: "#929aa5", labelBackgroundColor: "#333b47" } },
   localization: { locale: "zh-TW", priceFormatter: (p) => fmtPrice(p) },
 });
-const CANDLE = { upColor: "#2fd38a", downColor: "#f0596b", wickUpColor: "#2fd38a", wickDownColor: "#f0596b", borderVisible: false };
+const CANDLE = { upColor: "#0ecb81", downColor: "#f6465d", wickUpColor: "#0ecb81", wickDownColor: "#f6465d", borderVisible: false };
 const tt = (ms) => Math.floor(ms / 1000) + TZ_SHIFT;
 const lineData = (bars, k) => bars.map((b) => (b[k] == null ? { time: tt(b.t) } : { time: tt(b.t), value: b[k] }));
 function makeChart(el, h, opts = {}) {
@@ -444,7 +445,7 @@ async function pageOverview() {
     const vals = order.map(([k]) => i.dims[k]?.bull_pct).filter((x) => x != null);
     const spread = vals.length ? Math.max(...vals) - Math.min(...vals) : 0;
     const lvl = spread >= 60 ? "高" : spread >= 30 ? "中等" : "低";
-    $("#div-body").innerHTML = `<div class="bd-grid"><div class="bd-col">${biasHTML.replace(/<div class="sub-h" style="margin-top:14px">[^]*$/, "")}</div><div class="bd-col">${biasHTML.match(/<div class="sub-h" style="margin-top:14px">[^]*$/)?.[0] || ""}<div class="bb-legend"><span><i style="background:#2fd38a"></i>偏多條件</span><span><i style="background:#f0596b"></i>偏空條件</span></div>
+    $("#div-body").innerHTML = `<div class="bd-grid"><div class="bd-col">${biasHTML.replace(/<div class="sub-h" style="margin-top:14px">[^]*$/, "")}</div><div class="bd-col">${biasHTML.match(/<div class="sub-h" style="margin-top:14px">[^]*$/)?.[0] || ""}<div class="bb-legend"><span><i style="background:#0ecb81"></i>偏多條件</span><span><i style="background:#f6465d"></i>偏空條件</span></div>
       ${order.map(([k, lab]) => { const s = i.dims[k]; if (!s) return ""; const b = s.bull_pct;
         return `<div class="bbrow"><span>${lab}</span><div class="bbbar" title="${esc(s.checks.map((c) => (c.bull ? "✔ " : "✘ ") + c.name).join("\n"))}">${b > 0 ? `<div class="b" style="width:${b}%">${b}%</div>` : ""}${b < 100 ? `<div class="s" style="width:${100 - b}%">${100 - b}%</div>` : ""}</div></div>`; }).join("")}
       <div class="sub-h" style="margin-top:12px">${smallIc("team", 13)} AI 分析師多空分數（0 看空 – 100 看多）${i.ai ? "・" + esc(fmtTime(i.ai.created_at)) : ""}</div>
@@ -497,7 +498,7 @@ async function pageCoin(sym, params) {
   const fgCls = !fg ? "" : fg.value < 45 ? "down" : fg.value > 55 ? "up" : "warn";
   const rk = s.risk;
   $("#app").innerHTML = `
-  <div class="det-head">${coinIcon(base, 38)}<span class="sym">${esc(base)}</span><button class="star ${stars.includes(sym) ? "on" : ""}" id="star" title="加入關注">${stars.includes(sym) ? "★" : "☆"}</button>
+  <div class="det-head">${coinIcon(base, 38)}<select class="coin-select sym" id="coin-symbol" aria-label="選擇研究幣種">${WATCH.map(s => `<option value="${esc(s)}" ${s === sym ? "selected" : ""}>${esc(baseOf(s))}</option>`).join("")}</select><button class="star ${stars.includes(sym) ? "on" : ""}" id="star" title="加入關注">${stars.includes(sym) ? "★" : "☆"}</button>
     <span class="nm">${esc(s.name)}・${esc(sym)}</span>${s.ai_status === "running" ? `<span class="pill run">● AI 分析中</span>` : s.ai ? `<span class="pill ${DIRS[s.ai.decision].pill}">AI：${DIRS[s.ai.decision].t}・${esc(fmtTime(s.ai.created_at))}</span>` : `<span class="pill gray">${smallIc("hourglass", 13)}尚未執行 AI 分析</span>`}
     <span class="pill done">● 即時行情</span></div>
   <div class="grid-4" style="margin-top:14px">
@@ -550,6 +551,7 @@ async function pageCoin(sym, params) {
   $("#f-bull").innerHTML = (dec ? dec.bull_factors.map((x) => `<li>${esc(x)}</li>`) : ck.filter((c) => c.bull).map((c) => `<li>${esc(c.name)}</li>`)).join("") || `<li class="muted">目前無</li>`;
   $("#f-bear").innerHTML = (dec ? dec.bear_factors.map((x) => `<li>${esc(x)}</li>`) : ck.filter((c) => !c.bull).map((c) => `<li>${esc(c.name.replace(">", "≤"))}</li>`)).join("") || `<li class="muted">目前無</li>`;
 
+  $("#coin-symbol").onchange = e => { location.hash = `#/coin/${e.target.value}?tf=${encodeURIComponent(tf)}`; };
   const renderMkt = () => {
     const t = live.tickers[sym] || s.ticker || {};
     const sn = s.snapshot || {};
@@ -599,8 +601,8 @@ async function pageCoin(sym, params) {
   const main = makeChart($("#main-chart"), 400);
   const sub = makeChart($("#sub-chart"), 130);
   const candle = main.addCandlestickSeries({ ...CANDLE });
-  const closeLine = main.addLineSeries({ color: "#3ee6a0", lineWidth: 2, visible: false });
-  const ma20 = main.addLineSeries({ color: "#38d6e8", lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+  const closeLine = main.addLineSeries({ color: "#0ecb81", lineWidth: 2, visible: false });
+  const ma20 = main.addLineSeries({ color: "#0ecb81", lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
   const ma60 = main.addLineSeries({ color: "#f5b041", lineWidth: 1.5, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
   const bbo = { color: "rgba(167,139,250,.75)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
   const bbU = main.addLineSeries(bbo), bbL = main.addLineSeries(bbo), bbM = main.addLineSeries({ ...bbo, lineStyle: 2 });
@@ -608,11 +610,11 @@ async function pageCoin(sym, params) {
   main.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
   main.priceScale("right").applyOptions({ scaleMargins: { top: 0.06, bottom: 0.2 } });
   const rsiS = sub.addLineSeries({ color: "#a78bfa", lineWidth: 1.5, priceLineVisible: false, priceFormat: { type: "custom", formatter: (v) => v.toFixed(1) } });
-  rsiS.createPriceLine({ price: 70, color: "rgba(240,89,107,.6)", lineStyle: 2, lineWidth: 1, axisLabelVisible: true });
-  rsiS.createPriceLine({ price: 30, color: "rgba(47,211,138,.6)", lineStyle: 2, lineWidth: 1, axisLabelVisible: true });
+  rsiS.createPriceLine({ price: 70, color: "rgba(246,70,93,.6)", lineStyle: 2, lineWidth: 1, axisLabelVisible: true });
+  rsiS.createPriceLine({ price: 30, color: "rgba(14,203,129,.6)", lineStyle: 2, lineWidth: 1, axisLabelVisible: true });
   const mfmt = { type: "custom", formatter: (v) => fmtPrice(v, Math.abs(v) >= 10 ? 1 : 3) };
   const macdH = sub.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false, priceFormat: mfmt });
-  const macdL = sub.addLineSeries({ color: "#38d6e8", lineWidth: 1.2, priceLineVisible: false, lastValueVisible: false, priceFormat: mfmt });
+  const macdL = sub.addLineSeries({ color: "#0ecb81", lineWidth: 1.2, priceLineVisible: false, lastValueVisible: false, priceFormat: mfmt });
   const macdS = sub.addLineSeries({ color: "#f5b041", lineWidth: 1.2, priceLineVisible: false, lastValueVisible: false, priceFormat: mfmt });
   sub.applyOptions({ localization: { locale: "zh-TW" } });
   let syncing = false;
@@ -620,8 +622,8 @@ async function pageCoin(sym, params) {
   sub.timeScale().subscribeVisibleLogicalRangeChange((r) => { if (syncing || !r) return; syncing = true; main.timeScale().setVisibleLogicalRange(r); syncing = false; });
 
   let bars = [], byTime = new Map(), hovering = false;
-  const volPt = (b) => ({ time: tt(b.t), value: b.v, color: b.c >= b.o ? "rgba(47,211,138,.45)" : "rgba(240,89,107,.45)" });
-  const histPt = (b) => (b.macd_hist == null ? { time: tt(b.t) } : { time: tt(b.t), value: b.macd_hist, color: b.macd_hist >= 0 ? "rgba(47,211,138,.6)" : "rgba(240,89,107,.6)" });
+  const volPt = (b) => ({ time: tt(b.t), value: b.v, color: b.c >= b.o ? "rgba(14,203,129,.45)" : "rgba(246,70,93,.45)" });
+  const histPt = (b) => (b.macd_hist == null ? { time: tt(b.t) } : { time: tt(b.t), value: b.macd_hist, color: b.macd_hist >= 0 ? "rgba(14,203,129,.6)" : "rgba(246,70,93,.6)" });
   const applyPrefs = () => {
     candle.applyOptions({ visible: chartPrefs.type !== "line" }); closeLine.applyOptions({ visible: chartPrefs.type === "line" });
     [ma20, ma60].forEach((x) => x.applyOptions({ visible: chartPrefs.ma })); [bbU, bbL, bbM].forEach((x) => x.applyOptions({ visible: chartPrefs.bb }));
@@ -637,10 +639,10 @@ async function pageCoin(sym, params) {
     const chg = prev ? b.c - prev.c : null, pct = prev ? (chg / prev.c) * 100 : null;
     $("#ohlc").innerHTML = `<b>${esc(base)}</b><span>${TF_LABEL[tf]}</span><span class="dim">${fmtTime(b.t)}</span><span>開 <b>${fmtPrice(b.o)}</b></span><span>高 <b>${fmtPrice(b.h)}</b></span><span>低 <b>${fmtPrice(b.l)}</b></span><span>收 <b>${fmtPrice(b.c)}</b></span>` +
       (chg != null ? `<span>漲跌 <b class="${signCls(chg)}">${chg > 0 ? "+" : ""}${fmtPrice(chg)} (${fmtPct(pct)})</b></span>` : "") + `<span>成交量 <b>${fmtBig(b.v)}</b></span>`;
-    $("#legend").innerHTML = (chartPrefs.ma ? `<span style="color:#38d6e8"><i style="background:#38d6e8"></i>MA20 ${fmtPrice(b.ma20)}</span><span style="color:#f5b041"><i style="background:#f5b041"></i>MA60 ${fmtPrice(b.ma60)}</span>` : "") +
+    $("#legend").innerHTML = (chartPrefs.ma ? `<span style="color:#0ecb81"><i style="background:#0ecb81"></i>MA20 ${fmtPrice(b.ma20)}</span><span style="color:#f5b041"><i style="background:#f5b041"></i>MA60 ${fmtPrice(b.ma60)}</span>` : "") +
       (chartPrefs.bb ? `<span style="color:#a78bfa"><i style="background:#a78bfa"></i>BB 上 ${fmtPrice(b.bb_up)}・下 ${fmtPrice(b.bb_lo)}</span>` : "");
     $("#sub-legend").innerHTML = chartPrefs.sub === "rsi" ? `<span style="color:#a78bfa">RSI(14) ${b.rsi != null ? b.rsi.toFixed(2) : "—"}</span><span class="dim">70 超買 / 30 超賣</span>`
-      : chartPrefs.sub === "macd" ? `<span style="color:#38d6e8">MACD ${b.macd != null ? b.macd.toFixed(3) : "—"}</span><span style="color:#f5b041">訊號 ${b.macd_signal != null ? b.macd_signal.toFixed(3) : "—"}</span><span class="${signCls(b.macd_hist)}">柱 ${b.macd_hist != null ? b.macd_hist.toFixed(3) : "—"}</span>` : "";
+      : chartPrefs.sub === "macd" ? `<span style="color:#0ecb81">MACD ${b.macd != null ? b.macd.toFixed(3) : "—"}</span><span style="color:#f5b041">訊號 ${b.macd_signal != null ? b.macd_signal.toFixed(3) : "—"}</span><span class="${signCls(b.macd_hist)}">柱 ${b.macd_hist != null ? b.macd_hist.toFixed(3) : "—"}</span>` : "";
   };
   main.subscribeCrosshairMove((p) => { if (!p.time) { hovering = false; header(bars[bars.length - 1]); return; } hovering = true; header(byTime.get(p.time)); });
   const loadTf = async () => {
@@ -658,7 +660,7 @@ async function pageCoin(sym, params) {
   applyPrefs(); await loadTf();
   if (s.ai && s.ai.decision !== "WAIT") {
     const pl = (price, color, title) => price != null && candle.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title });
-    pl(s.ai.entry, "#38d6e8", "AI 進場"); pl(s.ai.stop, "#f0596b", "停損"); pl(s.ai.take_profit, "#2fd38a", "停利");
+    pl(s.ai.entry, "#0ecb81", "AI 進場"); pl(s.ai.stop, "#f6465d", "停損"); pl(s.ai.take_profit, "#0ecb81", "停利");
   }
   $$("#tf-tabs .tab").forEach((b) => b.onclick = async () => { tf = b.dataset.tf; $$("#tf-tabs .tab").forEach((x) => x.classList.toggle("active", x === b)); history.replaceState(null, "", `#/coin/${sym}?tf=${tf}`); await loadTf(); });
   const toggleMenu = (btn, menu) => { $(btn).onclick = (e) => { e.stopPropagation(); const m = $(menu); const h = m.hidden; $$(".dd-menu").forEach((x) => x.hidden = true); m.hidden = !h; }; $(menu).onclick = (e) => e.stopPropagation(); };
@@ -690,7 +692,7 @@ async function pageCoin(sym, params) {
 /* AI 團隊 */
 async function pageTeam(params) {
   setTitle("AI 團隊研究室", "原版 12 位＋新策略經理・獨立分工");
-  const [ov, lv, aset] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/ai/live"), api("/api/crypto/ai/settings")]);
+  const [ov, lv, aset, newPaper] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/ai/live"), api("/api/crypto/ai/settings"), J("new-paper.json").catch(() => null)]);
   WATCH = ov.items.map((i) => i.symbol);
   let sym = coinKey(params.get("symbol") || (lv.busy ? lv.current.symbol : lastCoin));
   if (!WATCH.includes(sym)) sym = WATCH[0];
@@ -732,24 +734,26 @@ async function pageTeam(params) {
     <span class="muted" style="margin-left:10px">自動排程</span><span class="chip-muted">${A.schedule_enabled ? `每 ${A.schedule_interval_hours} 小時・${baseOf(A.schedule_symbol)}・下次 ${aset.next_run ? fmtTime(aset.next_run) : "—"}` : "已關閉"}</span>
     <span class="muted">持有期間</span><span class="chip-muted">${holdTxt(A.holding_period_days)}</span>
     <span class="muted">模型</span><span class="chip-muted" id="team-models"></span>
-    <span class="chip-muted" style="margin-left:auto" title="公開版沒有分析按鈕">手動分析：傳訊息給 Grok Bot</span>
   </div>
   <section class="card cons-bar"><div class="cons-h"><h2>${ICON.target}目前共識</h2><span id="cons-st"></span></div><div id="cons" class="cons-body"></div></section>
   <section class="card" style="margin-top:16px;padding:0"><div class="graph" id="graph"><svg class="links" id="links"></svg>
-    <div class="gcol">${col(0)}</div><div class="gcol">${col(1)}</div><div class="gcol">${col(2)}</div><div class="gcol">${col(3)}</div><div class="gcol">${col(4)}</div></div></section>
+    <div class="gcol">${col(0)}</div><div class="gcol">${col(1)}</div><div class="gcol">${col(2)}</div><div class="gcol">${col(3)}</div><div class="gcol">${col(4)}</div>${strategyBranchHTML(newPaper)}</div></section>
   <p class="note" style="margin:8px 2px 0">點任一角色卡可展開完整報告（Markdown 全文；辯論角色依輪次列出）。</p>
   <section class="card" style="margin-top:12px;padding:0"><div class="stepper" id="stepper"></div></section>
   <section class="card" style="margin-top:12px"><div class="prog">
-    <svg class="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" stroke="#1a283d" stroke-width="5"/><circle id="ring" cx="22" cy="22" r="18" stroke="#3ee6a0" stroke-width="5" stroke-dasharray="0 113" transform="rotate(-90 22 22)"/></svg>
+    <svg class="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" stroke="#333b47" stroke-width="5"/><circle id="ring" cx="22" cy="22" r="18" stroke="#0ecb81" stroke-width="5" stroke-dasharray="0 113" transform="rotate(-90 22 22)"/></svg>
     <b style="white-space:nowrap">研究進度</b><span class="muted" style="white-space:nowrap" id="pg-t"></span><div class="pbar"><i id="pg-bar" style="width:0%"></i></div><span class="num" id="pg-pct"></span>
     <span style="border-left:1px solid var(--line2);height:34px"></span>
     <span class="muted" id="pg-calls" style="white-space:nowrap;font-size:12.5px"></span>
     <span style="border-left:1px solid var(--line2);height:34px"></span>
     <b>${baseOf(sym)}</b><span class="num" id="tp-px" style="font-size:17px;font-weight:700">—</span><span class="num" id="tp-chg"></span><span id="tp-spark"></span>
   </div></section>`;
-  const newRoleCard=document.createElement('section');newRoleCard.className='card new-section';
-  newRoleCard.innerHTML='<div class="card-h"><h2>新策略經理</h2><a class="ok" href="#/paper/new">前往新策略 ›</a></div><p class="note">第 13 位角色，專用第四組 Gemini Flash-Lite。只評估目前報告標的的新策略帳戶，獨立資金 10,000 USDC；每 5 分鐘與門檻事件評估。原版 12 位的逐倉提案、三方風控與最終裁決保留原分工。</p>';
-  $('#app').append(newRoleCard);
+  // Keep the branch inside #graph, while original progress remains exactly 12 roles.
+  const stepCard = $("#stepper").closest("section"), progressCard = $(".prog").closest("section");
+  $("#app").prepend(stepCard, progressCard);
+  const strategyCard = $("#ag-new-strategy");
+  strategyCard.onclick = () => showSheet("新策略經理", strategyManagerHTML(newPaper));
+  strategyCard.onkeydown = e => { if(e.key === "Enter" || e.key === " ") { e.preventDefault(); strategyCard.click(); } };
   $("#team-sym").onchange = (e) => { location.hash = `#/team?symbol=${e.target.value}`; };
   const render = () => {
     const done = ROLES.filter((r) => roles[r.key]?.status === "done").length;
@@ -781,8 +785,8 @@ async function pageTeam(params) {
     } else { $("#cons-st").innerHTML = `<span class="pill mid">${isLive ? "分析中" : "等待分析"}</span>`; $("#cons").innerHTML = `<p class="muted" style="margin:0;font-size:13px">${isLive ? "投資組合經理完成最終決策後，會在這裡顯示做多 / 做空 / 觀望、進場、停損與停利。" : run?.status === "failed" ? "上次分析失敗：" + esc(friendlyErr(run.error)) : "尚無共識。"}</p>`; }
     requestAnimationFrame(draw);
   };
-  $("#graph").addEventListener("click", (e) => { const a = e.target.closest(".agent"); if (a) openRole(a.id.replace("ag-", "")); });
-  $("#graph").addEventListener("keydown", (e) => { const a = e.target.closest(".agent"); if (a && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openRole(a.id.replace("ag-", "")); } });
+  $("#graph").addEventListener("click", (e) => { const a = e.target.closest(".agent"); if (a && a.id !== "ag-new-strategy") openRole(a.id.replace("ag-", "")); });
+  $("#graph").addEventListener("keydown", (e) => { const a = e.target.closest(".agent"); if (a && a.id !== "ag-new-strategy" && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openRole(a.id.replace("ag-", "")); } });
   on("data_updated", () => route());
 
   const item = ov.items.find((i) => i.symbol === sym);
@@ -802,12 +806,15 @@ async function pageTeam(params) {
       return side === "r" ? [b.right - gb.left, b.top + b.height / 2 - gb.top] : side === "l" ? [b.left - gb.left, b.top + b.height / 2 - gb.top]
         : side === "b" ? [b.left + b.width / 2 - gb.left, b.bottom - gb.top] : [b.left + b.width / 2 - gb.left, b.top - gb.top]; };
     const on_ = (a, b) => roles[a]?.status === "done" && (roles[b]?.status === "done" || roles[b]?.status === "running");
-    $("#links").innerHTML = `<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#38d6e8" stroke="none"/></marker></defs>` + links.map(([a, b]) => {
-      const stc = on_(a, b) ? "rgba(62,230,160,.8)" : "rgba(56,214,232,.35)";
+    $("#links").innerHTML = `<defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#0ecb81" stroke="none"/></marker></defs>` + links.map(([a, b]) => {
+      const stc = on_(a, b) ? "rgba(14,203,129,.8)" : "rgba(14,203,129,.35)";
       if (a === "manager" && b === "trader") { const [x1, y1] = pt(a, "b"), [x2, y2] = pt(b, "t"); return `<path d="M${x1} ${y1} L${x2} ${y2 - 2}" stroke="${stc}" stroke-width="1.6" marker-end="url(#arr)"/>`; }
       const [x1, y1] = pt(a, "r"), [x2, y2] = pt(b, "l"); const mx = (x1 + x2) / 2;
       return `<path d="M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2 - 2} ${y2}" stroke="${stc}" stroke-width="1.6" marker-end="url(#arr)"/>`;
     }).join("");
+    const [rx, ry] = pt("manager", "b"), reportBox = $("#strategy-research").getBoundingClientRect();
+    const bx = reportBox.left + reportBox.width / 2 - gb.left, by = reportBox.top - gb.top;
+    $("#links").insertAdjacentHTML("beforeend", `<path d="M${rx} ${ry} L${rx} ${by-12} L${bx} ${by-12} L${bx} ${by-2}" stroke="var(--mint)" stroke-width="1.6" marker-end="url(#arr)"/>`);
   }
   render(); setTimeout(draw, 300);
   window.addEventListener("resize", draw); pageCleanup.push(() => window.removeEventListener("resize", draw));
@@ -836,8 +843,8 @@ async function pagePaper() {
   let tab = pagePaper.tab || "pos", range = pagePaper.range || "3m";
   const RANGES = [["1d", "一天", 1], ["1w", "一週", 7], ["1m", "一個月", 30], ["3m", "三個月", 90]];
   $("#app").innerHTML = `
-  ${strategyTabs("original")}
-  <div class="ro-banner bot-note">${smallIc("info", 15)}<span>原版 AI 策略・全程只模擬：虛擬 ${money(P.initial)} USDC，不連交易所、不下真實訂單。<b>計入永續資金費率，不計手續費</b>。價格全部來自 <b>Binance USDⓈ-M 永續合約（USDC 本位）</b>（v1.0.7 以前的舊紀錄是 OKX USDT 永續，金額直接沿用）；顯示用槓桿 <b>${LEV}x 逐倉</b>（保證金 = 名目 ÷ ${LEV}）。</span></div>
+
+  <div class="ro-banner bot-note">${smallIc("info", 15)}<span>AI 團隊策略・全程只模擬：虛擬 ${money(P.initial)} USDC，不連交易所、不下真實訂單。<b>計入永續資金費率，不計手續費</b>。價格全部來自 <b>Binance USDⓈ-M 永續合約（USDC 本位）</b>（v1.0.7 以前的舊紀錄是 OKX USDT 永續，金額直接沿用）；顯示用槓桿 <b>${LEV}x 逐倉</b>（保證金 = 名目 ÷ ${LEV}）。</span></div>
   ${P.engine && P.engine.last_error && /Binance/.test(P.engine.last_error) ? `<div class="callout" style="margin-bottom:12px"><b>注意</b><span>後台暫時連不上 Binance：${esc(P.engine.last_error)}（不會改用其他交易所，恢復後自動補算）</span></div>` : ""}
   <div class="grid-4">
     <div class="card kcard"><small>目前權益（含未實現）</small><div class="row"><span class="big num" id="pp-eq">—</span></div><small class="num" id="pp-eq2"></small></div>
@@ -845,14 +852,7 @@ async function pagePaper() {
     <div class="card kcard"><small>勝率</small><div class="row"><span class="big num">${P.win_rate == null ? "—" : P.win_rate + "%"}</span></div><small class="num">${P.wins} 勝 / ${P.trades} 筆已平倉</small></div>
     <div class="card kcard"><small>最大回撤（已實現權益）</small><div class="row"><span class="big num ${P.max_drawdown_pct > 0 ? "down" : ""}">${P.max_drawdown_pct.toFixed(2)}%</span></div><small class="num">依已實現權益（平倉 + 資金費）計算</small></div>
   </div>
-  <section class="card" style="margin-top:16px">
-    <div class="card-h"><div class="tabs pp-tabs" id="pp-tabs">
-      <button class="tab" data-t="pos">倉位（${P.open.length}）</button><button class="tab" data-t="ord">當前委託（${P.pending.length}）</button>
-      <button class="tab" data-t="other">取消 / 拒單（${other.length}）</button></div>
-      <div class="right"><span class="chip-muted" id="pp-src">Binance USDC 永續・標記價格即時</span></div></div>
-    <div id="pp-body"></div></section>
-  <section class="card paper-history" style="margin-top:16px"><div class="card-h"><h2>${ICON.list}倉位歷史</h2><div class="right"><span class="chip-muted">共 ${hist.length} 筆・已實現盈虧含資金費</span></div></div>
-    <div id="pp-hist"></div></section>
+  ${tradePanelHTML(P.open.length, P.pending.length)}
   <section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.trendUp}權益曲線</h2><div class="right"><span class="chip-muted">已實現（平倉 + 資金費）＋ 目前含未實現</span></div></div>
     <div id="eq-chart" style="height:240px"></div></section>
   <div class="set-grid" style="margin-top:16px">
@@ -913,30 +913,20 @@ async function pagePaper() {
       <div class="hist-foot"><span>出場原因 <b class="${REASON(o.close_reason) === "停利" ? "up" : REASON(o.close_reason) === "停損" ? "down" : ""}">${esc(REASON(o.close_reason))}</b></span><span>價差 ${usd(o.pnl_price)}・資金費 ${usd(o.funding_total, 4)}</span>${runLink(o)}</div></article>`).join("")}</div>`
       : `<div class="empty-state" style="height:110px">${ICON.paper}<b>${RANGES.find((r) => r[0] === range)[1]}內沒有已平倉的倉位</b></div>`}`;
   };
-  const otherBody = () => other.length ? `<table class="tbl pos-tbl"><thead><tr><th>合約</th><th>委託價格</th><th>停損</th><th>停利</th><th>AI 部位上限</th><th>信心</th><th>狀態</th><th>下單時間（台北）</th><th>取消 / 拒單時間（台北）</th><th>原因</th><th></th></tr></thead><tbody>
-    ${other.map((o) => `<tr><td><div class="pc-name"><b>${esc(o.symbol)}</b><span class="tag">永續</span><span class="tag lev">${o.leverage || LEV}x</span><span class="tag">限價</span>${sideTag(o)}</div></td>
-      <td class="num">${fmtPrice(o.entry)}</td><td class="num down">${fmtPrice(o.stop)}</td><td class="num up">${fmtPrice(o.take_profit)}</td><td class="num">${o.ai_pct ?? "—"}%</td><td class="num">${o.confidence ?? "—"}</td>
-      <td><span class="pill ${ST[o.status]?.[1] || ""}">${ST[o.status]?.[0] || o.status}</span></td><td class="num">${fmtTime(o.created_at)}</td><td class="num">${fmtTime(o.close_at || o.created_at)}</td><td class="wrap">${esc(o.close_reason || o.note || "—")}</td><td>${runLink(o)}</td></tr>`).join("")}</tbody></table>
-    <div class="pos-cards">${other.map((o) => `<div class="pcard">
-      <div class="pc-h">${contract(o)}<span class="tag">限價</span>${sideTag(o)}<span class="pc-state">${ST[o.status]?.[0] || o.status}</span></div>
-      <div class="pc-grid"><div><small>委託價格</small><b class="num">${fmtPrice(o.entry)}</b></div><div><small>停損</small><b class="num down">${fmtPrice(o.stop)}</b></div><div><small>停利</small><b class="num up">${fmtPrice(o.take_profit)}</b></div></div>
-      <div class="pc-foot">下單 ${fmtTime(o.created_at)}・${ST[o.status]?.[0] || ""} ${fmtTime(o.close_at || o.created_at)}（台北）・${esc(o.close_reason || o.note || "")} ${runLink(o)}</div></div>`).join("")}</div>`
-    : `<div class="empty-state" style="height:110px"><b>沒有取消或拒單紀錄</b></div>`;
-  const renderTab = () => {
+  const renderTab = (next = tab) => {
+    tab = TRADE_TABS.some(t => t[0] === next) ? next : "pos";
     pagePaper.tab = tab; pagePaper.range = range;
-    $$("#pp-tabs .tab").forEach((b) => b.classList.toggle("active", b.dataset.t === tab));
-    if (tab === "hist") tab = "pos";
-    $("#pp-body").innerHTML = { pos: posBody, ord: ordBody, other: otherBody }[tab]();
-    $("#pp-hist").innerHTML = histBody();
-    $$("#pp-range .tab").forEach((b) => b.onclick = () => { range = b.dataset.r; renderTab(); });
+    selectTradeTab(tab);
+    $("#pp-body").innerHTML = {pos:posBody, ord:ordBody, orders:()=>tradeOrdersHTML(P.orders,"original"), fills:()=>tradeFillsHTML(tradeFills(P,"original")), hist:histBody}[tab]();
+    $$("#pp-range .tab").forEach(b => b.onclick = () => { range=b.dataset.r; renderTab(); });
     upd();
   };
-  $$("#pp-tabs .tab").forEach((b) => b.onclick = () => { tab = b.dataset.t; renderTab(); });
+  bindTradeTabs(renderTab);
 
   // 權益曲線
   const el = $("#eq-chart");
-  const ch = makeChart(el, 240, { timeScale: { borderColor: "#1c2a40", timeVisible: true } });
-  const area = ch.addAreaSeries({ lineColor: "#3ee6a0", topColor: "rgba(62,230,160,.28)", bottomColor: "rgba(62,230,160,0)", lineWidth: 2, priceFormat: { type: "custom", formatter: (v) => money(v) } });
+  const ch = makeChart(el, 240, { timeScale: { borderColor: "#333b47", timeVisible: true } });
+  const area = ch.addAreaSeries({ lineColor: "#0ecb81", topColor: "rgba(14,203,129,.28)", bottomColor: "rgba(14,203,129,0)", lineWidth: 2, priceFormat: { type: "custom", formatter: (v) => money(v) } });
   const base = [];
   P.curve.forEach((p) => { const t = Math.floor(p.t / 1000) + TZ_SHIFT; if (base.length && base[base.length - 1].time >= t) base[base.length - 1].value = p.equity; else base.push({ time: t, value: p.equity }); });
   area.createPriceLine({ price: P.initial, color: "rgba(129,147,173,.5)", lineStyle: 2, lineWidth: 1, axisLabelVisible: false, title: "起始" });
@@ -967,8 +957,8 @@ async function pagePaper() {
 }
 async function pageReports() {
   setTitle("研究報告", "AI 團隊・繁體中文");
-  const runs = await api("/api/crypto/ai/runs?limit=200");
-  $("#app").innerHTML = `<section class="card"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${runs.length} 份</span></div></div>
+  const [runs, usage] = await Promise.all([api("/api/crypto/ai/runs?limit=200"), J("ai-usage.json").catch(() => null)]);
+  $("#app").innerHTML = `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${runs.length} 份</span></div></div>
     ${runs.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="依金鑰槽位，含失敗重試">呼叫次數（依槽位）</th><th>耗時</th><th></th></tr></thead><tbody>
     ${runs.map((r) => { const d = DIRS[r.decision]; const m = r.models || {};
       return `<tr class="run-row"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
@@ -994,7 +984,6 @@ async function pageReport(id) {
         <div class="factors"><div class="bull"><h4 class="up">看多因素</h4><ul>${(dec.bull_factors || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div><div class="bear"><h4 class="down">看空因素</h4><ul>${(dec.bear_factors || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>
         ${(res.warnings || []).length ? `<div class="callout"><b>注意</b><span>${res.warnings.map(esc).join("；")}</span></div>` : ""}</section>
       ${res.new_strategy?`<section class="card" style="margin-top:16px"><div class="card-h"><h2>新策略經理</h2></div><p class="note">${esc(res.new_strategy.state)}</p><a class="ok" href="#/paper/new">查看新策略帳戶與決策 ›</a></section>`:""}
-      ${dailyUsageHTML(res.daily_usage)}
       <section class="card" style="margin-top:16px"><div class="rep-nav" id="rep-nav">${REPORT_ORDER.filter(([k]) => r.reports_html?.[k]).map(([k, t], i) => `<button class="tab outline ${i ? "" : "active"}" data-k="${k}">${esc(t.split("｜")[0])}</button>`).join("")}</div>
         <div class="md" id="rep-body"></div></section>
       ${r.data_inputs && Object.keys(r.data_inputs).length ? `<section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.chain}資料輸入快照（分析當下餵給 AI 的數據）</h2></div>
@@ -1029,7 +1018,7 @@ async function pageSettings() {
   const slotSplit = (t) => { const g = {}; TIER_ROLES[t].forEach((r) => { const sl = A.role_key_slots[r] || A[t].key_slot; (g[sl] = g[sl] || []).push(ROLE_NAME[r] || r); });
     return Object.entries(g).sort().map(([sl, rs]) => `槽位 ${sl}：<span class="dim">${rs.map(esc).join("、")}</span>`).join("<br>") +
       `<br>槽位 3（備用）：<span class="dim">排程 run 在原槽位額度用完或長退避仍失敗時接手；手動 / 補完成優先使用</span>`; };
-  const tierCard = (t) => { const c = A[t]; return `<div class="card" style="background:#0c1524"><div class="card-h"><h2 style="font-size:15px">${t === "quick" ? "快速思考層" : "深度思考層"}<span class="dim" style="font-size:12px;font-weight:400;margin-left:6px">${t === "quick" ? "4 位分析師、多空研究員、交易員、3 位風控（10 位）" : "研究經理、投資組合經理（2 位）"}</span></h2></div>
+  const tierCard = (t) => { const c = A[t]; return `<div class="card" style="background:#20252d"><div class="card-h"><h2 style="font-size:15px">${t === "quick" ? "快速思考層" : "深度思考層"}<span class="dim" style="font-size:12px;font-weight:400;margin-left:6px">${t === "quick" ? "4 位分析師、多空研究員、交易員、3 位風控（10 位）" : "研究經理、投資組合經理（2 位）"}</span></h2></div>
     <div class="cfg" style="grid-template-columns:120px 1fr">
       <div>供應商</div><div>${esc(PROV[c.provider] || c.provider)}</div>
       <div>模型</div><div class="num"><b>${esc(c.model)}</b></div>
@@ -1110,7 +1099,7 @@ async function pageSettings() {
 }
 
 /* router / top bar */
-function setTitle(t, chip) { $("#page-title").textContent = t; const c = $("#page-chip"); c.textContent = chip || ""; c.style.display = chip ? "" : "none"; document.title = "easonAgents"; }
+function setTitle(t, chip) { document.title = "easonAgents"; $("#app").setAttribute("aria-label", t); }
 async function route() {
   pageCleanup.forEach((f) => { try { f(); } catch (e) {} }); pageCleanup = []; closeSheet();
   const h = location.hash || "#/";
@@ -1135,23 +1124,9 @@ async function route() {
     app.innerHTML = `<div class="card"><div class="empty-state"><b>載入失敗</b><small>${esc(e.message)}</small></div></div>`;
   }
 }
-function setupSearch() {
-  const inp = $("#search"), pop = $("#search-pop");
-  const show = () => {
-    const q = inp.value.trim().toUpperCase();
-    if (!q) { pop.hidden = true; return; }
-    const hits = WATCH.filter((s) => s.includes(q) || baseOf(s).includes(q));
-    pop.innerHTML = hits.map((s, i) => `<a href="#/coin/${s}" class="${i ? "" : "sel"}"><span>${coinIcon(baseOf(s), 18)} ${baseOf(s)}</span><span class="muted">${s}</span></a>`).join("") || `<div class="muted" style="padding:8px 10px">公開版只提供 BTC、ETH、ZEC</div>`;
-    pop.hidden = false;
-  };
-  inp.oninput = show;
-  inp.onkeydown = (e) => { if (e.key === "Enter") { const a = $("a", pop); if (a) { location.hash = a.getAttribute("href"); inp.value = ""; pop.hidden = true; } } if (e.key === "Escape") { inp.value = ""; pop.hidden = true; } };
-  inp.onblur = () => setTimeout(() => (pop.hidden = true), 200);
-}
-function tickClock() { $("#clock").textContent = fmtClock(new Date()); updateLivePill(); }
+document.addEventListener("click", e => { const dd = $(".nav-dropdown"); if (dd && !dd.contains(e.target)) dd.open = false; });
 window.addEventListener("hashchange", route);
-setupSearch(); tickClock(); setInterval(() => { tickClock(); tickElapsed(); }, 1000);
-renderUser();
+setInterval(tickElapsed, 1000);
 connectLive();
 (async () => {
   let cfg = null;
