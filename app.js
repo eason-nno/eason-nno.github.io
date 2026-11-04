@@ -689,7 +689,7 @@ async function pageCoin(sym, params) {
 
 /* AI 團隊 */
 async function pageTeam(params) {
-  setTitle("AI 團隊研究室", "12 位 AI 代理・即時進度");
+  setTitle("AI 團隊研究室", "原版 12 位＋新策略經理・獨立分工");
   const [ov, lv, aset] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/ai/live"), api("/api/crypto/ai/settings")]);
   WATCH = ov.items.map((i) => i.symbol);
   let sym = coinKey(params.get("symbol") || (lv.busy ? lv.current.symbol : lastCoin));
@@ -747,6 +747,9 @@ async function pageTeam(params) {
     <span style="border-left:1px solid var(--line2);height:34px"></span>
     <b>${baseOf(sym)}</b><span class="num" id="tp-px" style="font-size:17px;font-weight:700">—</span><span class="num" id="tp-chg"></span><span id="tp-spark"></span>
   </div></section>`;
+  const newRoleCard=document.createElement('section');newRoleCard.className='card new-section';
+  newRoleCard.innerHTML='<div class="card-h"><h2>新策略經理</h2><a class="ok" href="#/paper/new">前往新策略 ›</a></div><p class="note">第 13 位角色，專用第四組 Gemini Flash-Lite。只評估目前報告標的的新策略帳戶，獨立資金 10,000 USDC；每 5 分鐘與門檻事件評估。原版 12 位的逐倉提案、三方風控與最終裁決保留原分工。</p>';
+  $('#app').append(newRoleCard);
   $("#team-sym").onchange = (e) => { location.hash = `#/team?symbol=${e.target.value}`; };
   const render = () => {
     const done = ROLES.filter((r) => roles[r.key]?.status === "done").length;
@@ -833,7 +836,8 @@ async function pagePaper() {
   let tab = pagePaper.tab || "pos", range = pagePaper.range || "3m";
   const RANGES = [["1d", "一天", 1], ["1w", "一週", 7], ["1m", "一個月", 30], ["3m", "三個月", 90]];
   $("#app").innerHTML = `
-  <div class="ro-banner bot-note">${smallIc("info", 15)}<span>全程只模擬：虛擬 ${money(P.initial)} USDC，不連交易所、不下真實訂單。<b>計入永續資金費率，不計手續費</b>。價格全部來自 <b>Binance USDⓈ-M 永續合約（USDC 本位）</b>（v1.0.7 以前的舊紀錄是 OKX USDT 永續，金額直接沿用）；顯示用槓桿 <b>${LEV}x 逐倉</b>（保證金 = 名目 ÷ ${LEV}）。</span></div>
+  ${strategyTabs("original")}
+  <div class="ro-banner bot-note">${smallIc("info", 15)}<span>原版 AI 策略・全程只模擬：虛擬 ${money(P.initial)} USDC，不連交易所、不下真實訂單。<b>計入永續資金費率，不計手續費</b>。價格全部來自 <b>Binance USDⓈ-M 永續合約（USDC 本位）</b>（v1.0.7 以前的舊紀錄是 OKX USDT 永續，金額直接沿用）；顯示用槓桿 <b>${LEV}x 逐倉</b>（保證金 = 名目 ÷ ${LEV}）。</span></div>
   ${P.engine && P.engine.last_error && /Binance/.test(P.engine.last_error) ? `<div class="callout" style="margin-bottom:12px"><b>注意</b><span>後台暫時連不上 Binance：${esc(P.engine.last_error)}（不會改用其他交易所，恢復後自動補算）</span></div>` : ""}
   <div class="grid-4">
     <div class="card kcard"><small>目前權益（含未實現）</small><div class="row"><span class="big num" id="pp-eq">—</span></div><small class="num" id="pp-eq2"></small></div>
@@ -859,10 +863,10 @@ async function pagePaper() {
     <section class="card"><div class="card-h"><h2>${ICON.shield}模擬規則</h2></div>
       <ul class="bullets" style="font-size:12.8px;line-height:1.7">
         <li>帳戶：虛擬 ${money(P.initial)} USDC（v1.0.7 以前的舊紀錄以 USDT 計，數值直接沿用）；權益 = 初始資金 + 已實現價差 + 累計資金費；手續費 = 0。</li>
-        <li>下單：AI 做多 / 做空時以 AI 進場價掛限價單；市價已比進場價好就立即以市價成交；${P.pending_hours} 小時內沒觸及就取消。價位順序不合理或市價已越過停損則拒單。</li>
+        <li>下單：AI 明確選擇新開倉或反手時，自選市價或限價。限價在市價較有利時立即模擬成交，${P.pending_hours} 小時內未成交則取消；成交前資金或保護價位驗證未通過則拒單。歷史舊單保留原規則。</li>
         <li>部位：風險 = 權益 × ${P.risk_pct}%，數量 = 風險 ÷ |成交價 − 停損|，名目上限 = 權益 × AI 建議部位 %。</li>
         <li>槓桿與強平：顯示用預設 ${LEV}x 逐倉，保證金 = 名目 ÷ ${LEV}，收益率 = 盈虧 ÷ 保證金。預估強平價 = 開倉價 × (1 ∓ 1/${LEV}) ÷ (1 ∓ 維持保證金率)，維持保證金率用 Binance 第 1 檔（BTC / ETH 0.4%、ZEC 1%）。AI 停損通常在進場價 1–3% 內，比 10x 強平價（約 9.5%）近；本模擬不另外模擬強平。</li>
-        <li>每個幣種同時一筆：反向訊號先平倉再下新單；同向訊號只更新停損 / 停利（不加碼、不延長到期）；掛單中則改掛新單；觀望不動。</li>
+        <li>每個幣種同時一筆：團隊依報告標的明確決定新開倉、續抱、只平倉、反手、調整保護或取消委託。反手由 AI 選市價或限價，新單先驗證才平舊倉；不加碼、不延長既有到期。舊報告保留原紀錄。</li>
         <li>出場：後台用 Binance USDC 永續即時成交（WebSocket aggTrade，斷線時改用 1 分 K 最高 / 最低價）檢查，觸及停損 / 停利即出場；同一根同時觸及視為先停損；成交滿持有期限以市價平倉：持有期限 = AI 設定的持有天數 × 24 小時（目前 ${P.hold_hours} 小時）；改為 24 小時之前下的單維持原本 48 小時。</li>
         <li>資金費：Binance USDC 永續實際資金費率（v1.0.7 以前為 OKX），在結算時仍持倉才計入；做多付正費率、做空收正費率。</li>
         <li>標記價格：網頁用 Binance WebSocket 標記價格（markPrice@1s）串流即時更新；未實現盈虧 = (標記價 − 開倉價) × 數量 × 方向 + 已計資金費。</li>
@@ -986,9 +990,11 @@ async function pageReport(id) {
     <div>
       <section class="card"><div class="card-h"><h2>${coinIcon(baseOf(r.symbol), 26)}${esc(r.name)}（${esc(r.symbol)}）AI 短線分析</h2><div class="right">${r.pdf_url ? `<a class="btn sm mint" target="_blank" href="${esc(r.pdf_url)}">下載 PDF</a>` : ""}${r.html_url ? `<a class="btn sm" target="_blank" href="${esc(r.html_url)}">網頁版報告</a>` : ""}<a class="btn sm" href="#/coin/${r.symbol}">幣種研究</a></div></div>
         ${verdictHTML(r, `<div class="v-side"><small>當時價格</small><b class="num">${fmtPrice(r.price_at_run, 2)}</b><small>研究評等 ${esc(res.research_rating || "—")}</small></div>`)}
-        <p class="ai-sum">${esc(dec.executive_summary || "")}</p>
+        <p class="ai-sum">${esc(dec.executive_summary || "")}</p>${originalActionHTML(dec,res.execution)}
         <div class="factors"><div class="bull"><h4 class="up">看多因素</h4><ul>${(dec.bull_factors || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div><div class="bear"><h4 class="down">看空因素</h4><ul>${(dec.bear_factors || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>
         ${(res.warnings || []).length ? `<div class="callout"><b>注意</b><span>${res.warnings.map(esc).join("；")}</span></div>` : ""}</section>
+      ${res.new_strategy?`<section class="card" style="margin-top:16px"><div class="card-h"><h2>新策略經理</h2></div><p class="note">${esc(res.new_strategy.state)}</p><a class="ok" href="#/paper/new">查看新策略帳戶與決策 ›</a></section>`:""}
+      ${dailyUsageHTML(res.daily_usage)}
       <section class="card" style="margin-top:16px"><div class="rep-nav" id="rep-nav">${REPORT_ORDER.filter(([k]) => r.reports_html?.[k]).map(([k, t], i) => `<button class="tab outline ${i ? "" : "active"}" data-k="${k}">${esc(t.split("｜")[0])}</button>`).join("")}</div>
         <div class="md" id="rep-body"></div></section>
       ${r.data_inputs && Object.keys(r.data_inputs).length ? `<section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.chain}資料輸入快照（分析當下餵給 AI 的數據）</h2></div>
@@ -1119,6 +1125,7 @@ async function route() {
     else if ((m = path.match(/^\/coin\/([A-Za-z0-9]+)/))) { renderNav("coin"); await pageCoin(m[1], params); }
     else if (path === "/team") { renderNav("team"); await pageTeam(params); }
     else if (path === "/paper") { renderNav("paper"); await pagePaper(); }
+    else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper(); }
     else if (path === "/reports") { renderNav("reports"); await pageReports(); }
     else if ((m = path.match(/^\/report\/(.+)$/))) { renderNav("reports"); await pageReport(decodeURIComponent(m[1])); }
     else if (path === "/settings") { renderNav("settings"); await pageSettings(); }
