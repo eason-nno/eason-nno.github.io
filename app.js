@@ -208,7 +208,7 @@ function updateLivePill() {
 /** 持有期間文字：1 天顯示「24 小時」。 */
 const ROLE_NAME = { market: "技術分析師", sentiment: "情緒分析師", news: "新聞分析師", onchain: "鏈上分析師", bull: "多頭研究員", bear: "空頭研究員", manager: "研究經理", trader: "交易員", aggressive: "積極派風控", conservative: "保守派風控", neutral: "中立派風控", pm: "投資組合經理" };
 /* AI 代理團隊卡：執行中顯示即時進度（完成數、目前角色、經過時間每秒更新、最新重試 / 接手事件）；
-   資料來自 status.json（後台 run 期間每 60 秒、角色完成 / 重試 / 接手時推送；GitHub Pages 部署 + CDN 約延遲 30–90 秒）。 */
+   資料來自 status.json（後台在角色完成 / 重試 / 接手時推送；GitHub Pages 部署 + CDN 約延遲 30–90 秒）。 */
 function fmtDur(ms) { const t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), x = t % 60;
   return h ? `${h} 小時 ${m} 分 ${x} 秒` : m ? `${m} 分 ${String(x).padStart(2, "0")} 秒` : `${x} 秒`; }
 function teamCard(s) {
@@ -561,7 +561,7 @@ async function pageCoin(sym, params) {
       ["布林位置・4小時", sn.c != null && sn.bb_up != null ? (sn.c > sn.bb_up ? "高於上軌" : sn.c < sn.bb_lo ? "低於下軌" : sn.c >= sn.bb_mid ? "中軌上方" : "中軌下方") : "—"],
       ["MA20 / MA60・4小時", sn.ma20 != null && sn.ma60 != null ? (sn.ma20 > sn.ma60 ? "MA20 高於 MA60" : "MA20 低於 MA60") : "—"]].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("") +
       (dv ? [[`資金費率（Binance${dv.funding_interval_h ? "・每 " + dv.funding_interval_h + " 小時" : ""}）`, dv.funding_rate != null ? dv.funding_rate.toFixed(4) + "%" : "—"], ["未平倉量（Binance USDC 合約）", dv.oi_usd != null ? "$" + (dv.oi_usd / 1e9).toFixed(2) + "B" + (dv.oi_chg_24h != null ? `<small class="${signCls(dv.oi_chg_24h)}"> ${fmtPct(dv.oi_chg_24h)}</small>` : "") : "—"],
-        ["多空帳戶比（Binance）", dv.ls_ratio != null ? dv.ls_ratio.toFixed(2) : "—"], [`強平 多 / 空（WebSocket 收集 ${dv.liq_hours ?? "—"}h）`, dv.liq_long != null ? `<span class="down">$${(dv.liq_long / 1e6).toFixed(2)}M</span> / <span class="up">$${(dv.liq_short / 1e6).toFixed(2)}M</span>` : "—"]].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")
+        ["多空帳戶比（Binance）", dv.ls_ratio != null ? dv.ls_ratio.toFixed(2) : "—"], ["OKX 清算 多 / 空（近 24 小時參考）", liquidationHTML(dv)]].map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join("")
         : ["資金費率", "未平倉量", "多空帳戶比", "近 24h 清算"].map((a) => `<tr class="pending"><td>${a}</td><td>載入中…</td></tr>`).join(""));
   };
   let dv = null;
@@ -1084,7 +1084,7 @@ async function pageSettings() {
       <tr><td>K 線 / 指標 / 技術訊號</td><td>Binance USDC 永續 K 線（REST /fapi/v1/klines + WebSocket kline）</td><td class="ok c">瀏覽器即時</td></tr>
       <tr><td>模擬交易價格、AI 分析價格</td><td>Binance USDC 永續合約（WebSocket aggTrade；備援 1 分 K 高低點）</td><td class="c">後台</td></tr>
       <tr><td>恐懼貪婪指數</td><td>alternative.me</td><td class="ok c">瀏覽器每 10 分鐘</td></tr>
-      <tr><td>資金費率 / 未平倉量 / 多空比 / 清算</td><td>Binance USDⓈ-M 公開 API（強平由 WebSocket forceOrder 收集）</td><td class="c">後台推送快照</td></tr>
+      <tr><td>資金費率 / 未平倉量 / 多空比 / 清算參考</td><td>資金費／持倉／多空比：Binance；清算參考：OKX 公開歷史事件</td><td class="c">後台推送快照</td></tr>
       <tr><td>加密新聞</td><td>CoinDesk / Cointelegraph / Decrypt / The Block RSS</td><td class="c">後台推送快照</td></tr>
       <tr><td>鏈上數據</td><td>BTC：BTC 鏈上擁堵度（mempool.space）、blockchain.info；ETH / ZEC：Blockchair</td><td class="c">分析時</td></tr>
       <tr><td>AI 決策與報告</td><td>TradingAgents（12 位 AI 代理）</td><td class="c">每次分析完成</td></tr>

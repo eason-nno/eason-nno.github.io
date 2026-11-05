@@ -1,5 +1,8 @@
 /* 雙策略共用唯讀交易區。只使用已保存的委託／成交，不產生交易資料。 */
 const TRADE_TABS = [["pos", "倉位"], ["ord", "當前委託"], ["orders", "歷史委託"], ["fills", "歷史成交"], ["hist", "倉位歷史"]];
+function formatLeverage(value) {
+  return value == null || !Number.isFinite(Number(value)) ? "—" : `${Number(value).toLocaleString("en-US",{maximumFractionDigits:8})}X`;
+}
 function tradePanelHTML(open, pending) {
   return `<section class="card paper-history trade-panel"><div class="card-h"><div class="tabs pp-tabs" id="pp-tabs" role="tablist" aria-label="模擬交易紀錄">${TRADE_TABS.map(([k,t])=>`<button class="tab" id="trade-tab-${k}" role="tab" aria-controls="pp-body" data-t="${k}">${t}${k === "pos" ? `（${open}）` : k === "ord" ? `（${pending}）` : ""}</button>`).join("")}</div></div><div id="pp-body" role="tabpanel"></div></section>`;
 }
