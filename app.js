@@ -224,7 +224,7 @@ function teamCard(s) {
       <small>目前：<b>${esc(rn)}</b>・已執行 <span class="num" data-elapsed="${esc(cur.started_at || cur.created_at)}">${fmtDur(Date.now() - new Date(cur.started_at || cur.created_at))}</span></small>
       ${iss ? `<small class="tc-issue" title="${esc(fmtTime(iss.at))}">${esc(iss.text)}</small>` : ""}</div>`;
   }
-  if (last && last.status === "failed") return `<div class="card kcard"><small>AI 代理團隊</small><div class="row"><span class="big num">— <span class="muted" style="font-size:20px">/ ${n}</span></span><span class="pill high">失敗</span></div>
+  if (last && last.status === "failed") return `<div class="card kcard"><small>AI 代理團隊</small><div class="row"><span class="big num">— <span class="muted" style="font-size:20px">/ ${n}</span></span><span class="pill gray">失敗</span></div>
       <small>${esc(fmtTime(last.created_at))}・${esc(friendlyErr(last.error))}</small></div>`;
   const a = s.ai;
   return `<div class="card kcard"><small>AI 代理團隊</small><div class="row"><span class="big num">${a ? n : 0} <span class="muted" style="font-size:20px">/ ${n}</span></span>${a ? `<span class="pill done">已完成</span>${a.resumed ? `<span class="pill mid" title="補完成於 ${esc(fmtTime(a.resumed.at))}">補完成</span>` : ""}` : `<span class="pill gray">尚未執行</span>`}</div>
@@ -704,7 +704,7 @@ async function pageTeam(params) {
   let run = null, roles = {}, msgs = [], isLive = false;
   const loadState = async () => {
     const l = await api("/api/crypto/ai/live");
-    if (l.busy && l.current.symbol === sym) { isLive = true; run = l.current; roles = l.current.roles; msgs = l.current.messages.slice(); return; }
+    if ((l.busy || l.current?.status === "paused") && l.current.symbol === sym) { isLive = !!l.busy; run = l.current; roles = l.current.roles; msgs = l.current.messages.slice(); return; }
     isLive = false;
     const rs = await api(`/api/crypto/ai/runs?symbol=${sym}&limit=1`);
     if (rs.length) {
@@ -762,7 +762,7 @@ async function pageTeam(params) {
     ROLES.forEach((r) => {
       const st = roles[r.key] || { status: "waiting" }, el = $("#ag-" + r.key); if (!el) return;
       el.classList.toggle("running", st.status === "running"); el.classList.toggle("done", st.status === "done"); el.classList.toggle("failed", st.status === "failed");
-      const p = $("[data-st]", el); p.className = "pill " + (st.status === "done" ? "done" : st.status === "running" ? "run" : st.status === "failed" ? "high" : "gray");
+      const p = $("[data-st]", el); p.className = "pill " + (st.status === "done" ? "done" : st.status === "running" ? "run" : st.status === "failed" ? "gray" : "gray");
       p.textContent = st.status === "done" ? "已完成" : st.status === "running" ? "進行中" : st.status === "failed" ? "未完成" : "等待中";
       const f = $("[data-f]", el); f.hidden = !st.finding; f.textContent = (st.score != null ? `【${st.score}】` : "") + (st.finding || "");
       const ft = plain(fullText(r.key)), pv = $("[data-p]", el), mb = $("[data-more]", el);
@@ -774,7 +774,7 @@ async function pageTeam(params) {
       return `${i ? `<div class="step-line ${all ? "done" : ""}"></div>` : ""}<div class="step ${all ? "done" : any ? "active" : ""}"><div class="c">${all ? "✓" : i + 1}</div><span>${nm}</span></div>`; }).join("") + `<div class="step-count"><b>${done}</b> / ${ROLES.length} 已完成</div>`;
     const pct = Math.round((done / ROLES.length) * 100);
     const lv = isLive ? run : null, rnm = lv?.running_role ? (ROLE_NAME[lv.running_role] || lv.running_role) : "";
-    $("#pg-t").innerHTML = `${done} / ${ROLES.length} 已完成${run ? "・" + (isLive ? `執行中${rnm ? "・" + esc(rnm) : ""}・已執行 <span class="num" data-elapsed="${esc(run.started_at || run.created_at)}">${fmtDur(Date.now() - new Date(run.started_at || run.created_at))}</span>${lv?.last_issue ? `・<span class="tc-issue">${esc(lv.last_issue.text)}</span>` : ""}` : run.status === "done" ? `完成於 ${fmtTime(run.finished_at)}・耗時 ${Math.round(run.duration_s)} 秒${run.resumed ? `・補完成於 ${fmtTime(run.resumed.at)}` : ""}` : run.status === "failed" ? "失敗：" + esc(friendlyErr(run.error)) : "") : ""}`;
+    $("#pg-t").innerHTML = `${done} / ${ROLES.length} 已完成${run ? "・" + (isLive ? `執行中${rnm ? "・" + esc(rnm) : ""}・已執行 <span class="num" data-elapsed="${esc(run.started_at || run.created_at)}">${fmtDur(Date.now() - new Date(run.started_at || run.created_at))}</span>${lv?.last_issue ? `・<span class="tc-issue">${esc(lv.last_issue.text)}</span>` : ""}` : run.status === "done" ? `完成於 ${fmtTime(run.finished_at)}・耗時 ${Math.round(run.duration_s)} 秒${run.resumed ? `・補完成於 ${fmtTime(run.resumed.at)}` : ""}` : run.status === "failed" ? "失敗：" + esc(friendlyErr(run.error)) : run.status === "paused" ? "研究已暫停，進度已保存" : "") : ""}`;
     $("#pg-bar").style.width = pct + "%"; $("#pg-pct").textContent = pct + "%"; $("#ring").setAttribute("stroke-dasharray", `${(pct / 100) * 113} 113`);
     const c = run?.calls; $("#pg-calls").textContent = c ? "呼叫次數 " + fmtCalls(c) + (c.reconstructed ? "＊" : "") : ""; $("#pg-calls").title = callsTitle(c);
     const m = run?.models; $("#team-models").textContent = m ? `快速 ${m.quick.used || m.quick.model}・深度 ${m.deep.used || m.deep.model}` : `快速 ${A.quick.model}・深度 ${A.deep.model}`; $("#team-models").title = m ? `快速：${m.quick.key}；深度：${m.deep.key}` : "";
@@ -964,7 +964,7 @@ async function pageReports() {
     ${runs.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="依金鑰槽位，含失敗重試">呼叫次數（依槽位）</th><th>耗時</th><th></th></tr></thead><tbody>
     ${runs.map((r) => { const d = DIRS[r.decision]; const m = r.models || {};
       return `<tr class="run-row"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
-        <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill high" title="${esc(friendlyErr(r.error))}">失敗</span>` : `<span class="pill run">分析中</span>`}</td>
+        <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
         <td class="num">${r.status === "done" ? `${fmtLv(r.entry)} / <span class="down">${fmtLv(r.stop)}</span> / <span class="up">${fmtLv(r.take_profit)}</span>` : "—"}</td>
         <td class="muted num" style="font-size:12px">${m.quick ? `${esc(m.quick.used)}（槽位 ${m.quick.key_slot ?? "—"}）<br>${esc(m.deep.used)}（槽位 ${m.deep.key_slot ?? "—"}）${m.quick.fallback_reason ? '<br><span class="warn">快速已切換備援</span>' : ""}${m.deep.fallback_reason ? '<br><span class="warn">深度已切換備援</span>' : ""}` : "—"}</td>
         <td class="num" style="white-space:nowrap" title="${esc(callsTitle(r.calls))}">${fmtCalls(r.calls)}${r.calls?.reconstructed ? '<span class="warn" title="原始執行的呼叫次數由紀錄還原">＊</span>' : ""}</td><td class="num">${r.duration_s ? Math.round(r.duration_s) + " 秒" : "—"}</td>
