@@ -7,11 +7,22 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 /* 靜態資料（後台每次分析完推送）＋瀏覽器即時行情，模擬原本的 /api 介面 */
 const DATA = { cache: {}, published: null };
+function freshStatus(st, now = Date.now()) {
+  const published = Date.parse(st.published_at || "");
+  if (st.busy && (!Number.isFinite(published) || now - published > 10 * 60000)) {
+    return { ...st, busy: false, stale: true, current: st.current ? { ...st.current, status: "sync_stale" } : null };
+  }
+  return st;
+}
+function displayRun(run, st) {
+  return st.stale && st.current?.id === run.id && ["running", "queued", "pausing"].includes(run.status)
+    ? { ...run, status: "sync_stale" } : run;
+}
 async function J(name, maxAge = 30000) {
-  const c = DATA.cache[name]; if (c && Date.now() - c.t < maxAge) return c.v;
+  const c = DATA.cache[name]; if (c && Date.now() - c.t < maxAge) return name === "status.json" ? freshStatus(c.v) : c.v;
   const r = await fetch(`data/${name}?v=${Date.now()}`, { cache: "no-store" });
   if (!r.ok) throw new Error(r.status === 404 ? "找不到這筆資料（可能尚未推送）" : `HTTP ${r.status}`);
-  const v = await r.json(); DATA.cache[name] = { t: Date.now(), v }; return v;
+  const v = await r.json(); DATA.cache[name] = { t: Date.now(), v }; return name === "status.json" ? freshStatus(v) : v;
 }
 const tpeDate = (x) => new Date(new Date(x).getTime() + 8 * 3600000).toISOString().slice(0, 10);
 function nextRunTime(s, after = Date.now()) {
@@ -27,7 +38,8 @@ const coinKey = (s) => (s ? String(s).toUpperCase().replace(/(USDT|USDC|FDUSD|BU
 const sameCoin = (a, b) => !!a && !!b && coinKey(a) === coinKey(b);
 const unitOf = (sym) => (/USDT$/.test(sym || "") ? "USDT" : "USDC");
 async function aiState() {
-  const [runs, st] = await Promise.all([J("runs.json"), J("status.json")]);
+  const [rawRuns, st] = await Promise.all([J("runs.json"), J("status.json")]);
+  const runs = rawRuns.map(r => displayRun(r, st));
   const latest = (sym) => runs.find((r) => sameCoin(r.symbol, sym) && r.status === "done") || null;
   const status = (sym) => (st.busy && sameCoin(st.current?.symbol, sym) ? "running" : latest(sym) ? "done" : "not_run");
   return { runs, st, latest, status };
@@ -40,17 +52,17 @@ const api = async (p) => {
     const today = tpeDate(Date.now());
     return { items, kpi: { tracked: items.length, ai_done_today: A.runs.filter((r) => r.status === "done" && tpeDate(r.created_at) === today).length, ai_running: A.st.busy ? 1 : 0,
       signals_24h: MK.signalList({ limit: 100000 }).filter((s) => s.bar_time >= Date.now() - 86400000).length },
-      ai_live: A.st.busy ? A.st.current : null, categories: MK.categories.items.length ? MK.categories : mkt.categories || MK.categories, sentiment: MK.sentiment || mkt.sentiment };
+      ai_live: (A.st.busy || A.st.stale) ? A.st.current : null, categories: MK.categories.items.length ? MK.categories : mkt.categories || MK.categories, sentiment: MK.sentiment || mkt.sentiment };
   }
   if ((m = path.match(/^\/api\/crypto\/symbol\/(\w+)$/))) {
     await MK.ready; const A = await aiState(); const mkt = await J("market.json").catch(() => ({})); const s = coinKey(m[1]);
     if (!MK.cfg.watchlist.includes(s)) throw new Error("這個幣種不在追蹤清單");
     return { ...MK.summary(s), ai: A.latest(s), ai_status: A.status(s), sentiment: MK.sentiment || mkt.sentiment,
-      ai_live: A.st.busy && sameCoin(A.st.current?.symbol, s) ? A.st.current : null, ai_last: A.runs.find((r) => sameCoin(r.symbol, s)) || null };
+      ai_live: (A.st.busy || A.st.stale) && sameCoin(A.st.current?.symbol, s) ? A.st.current : null, ai_last: A.runs.find((r) => sameCoin(r.symbol, s)) || null };
   }
   if ((m = path.match(/^\/api\/crypto\/klines\/(\w+)$/))) { await MK.ready; return MK.klines(coinKey(m[1]), q.get("tf") || "4h", +(q.get("limit") || 300)); }
   if (path === "/api/crypto/signals") { await MK.ready; return MK.signalList({ symbol: q.get("symbol"), tf: q.get("tf"), limit: +(q.get("limit") || 60) }); }
-  if (path === "/api/crypto/ai/runs") { const runs = await J("runs.json"); const sy = q.get("symbol"); return runs.filter((r) => !sy || sameCoin(r.symbol, sy)).slice(0, +(q.get("limit") || 50)); }
+  if (path === "/api/crypto/ai/runs") { const st = await J("status.json"); const runs = (await J("runs.json")).map(r => displayRun(r,st)); const sy = q.get("symbol"); return runs.filter((r) => !sy || sameCoin(r.symbol, sy)).slice(0, +(q.get("limit") || 50)); }
   if ((m = path.match(/^\/api\/crypto\/ai\/runs\/([\w-]+)$/))) return J(`runs/${m[1]}.json`, 600000);
   if (path === "/api/crypto/ai/live") { const st = await J("status.json"); return { busy: !!st.busy, current: st.current || null }; }
   if (path === "/api/crypto/ai/settings") { const s = await J("settings.json"); return { ...s, next_run: nextRunTime(s.settings) }; }
@@ -179,17 +191,17 @@ function connectLive() {
 async function pollData() {
   try {
     const r = await fetch(`data/status.json?v=${Date.now()}`, { cache: "no-store" }); if (!r.ok) return;
-    const st = await r.json();
+    const st = freshStatus(await r.json());
     const rev=document.querySelector('meta[name="eason-frontend"]')?.content;
     if(st.frontend_revision && rev && rev!==st.frontend_revision){const url=new URL(location.href);url.searchParams.set("ui_revision",st.frontend_revision);location.replace(url.href);return;}
-    if (DATA.published && st.published_at !== DATA.published) {
+    if (DATA.published && (st.published_at !== DATA.published || !!st.stale !== !!DATA.stale)) {
       DATA.cache = {}; DATA.cache["status.json"] = { t: Date.now(), v: st };
       const lr = (await J("runs.json"))[0];
       if (lr && lr.status === "done") toast(`<b>${esc(baseOf(lr.symbol))} AI 結果已更新</b>最終決策：${esc(DIRS[lr.decision]?.t || lr.decision)}（信心 ${lr.confidence}）`, lr.decision === "LONG" ? "bull" : lr.decision === "SHORT" ? "bear" : "");
       else if (st.busy) toast(`<b>${esc(baseOf(st.current.symbol))} AI 分析進行中</b>完成後會自動更新`);
       emit("data_updated", st);
     }
-    DATA.published = st.published_at; DATA.cache["status.json"] = { t: Date.now(), v: st };
+    DATA.stale = !!st.stale; DATA.published = st.published_at; DATA.cache["status.json"] = { t: Date.now(), v: st };
     const pe = $("#pub-time"); if (pe) pe.textContent = fmtTime(st.published_at); const hb = $("#host-hb"); if (hb) hb.innerHTML = hostBeat(st);
   } catch (e) { /* 離線時略過 */ }
 }
@@ -215,6 +227,7 @@ function fmtDur(ms) { const t = Math.max(0, Math.floor(ms / 1000)), h = Math.flo
   return h ? `${h} 小時 ${m} 分 ${x} 秒` : m ? `${m} 分 ${String(x).padStart(2, "0")} 秒` : `${x} 秒`; }
 function teamCard(s) {
   const n = ROLES.length, cur = s.ai_live, last = s.ai_last;
+  if (cur?.status === "sync_stale") return `<div class="card kcard"><small>AI 代理團隊</small><span class="pill gray">同步中斷</span><small>進度超過10分鐘未更新，研究狀態待確認；請檢查本機後台。</small></div>`;
   if (cur) {
     const done = cur.done ?? Object.values(cur.roles || {}).filter((r) => r.status === "done").length;
     const rn = cur.running_role ? (ROLE_NAME[cur.running_role] || cur.running_role) : (cur.phase || "準備中");
@@ -704,7 +717,7 @@ async function pageTeam(params) {
   let run = null, roles = {}, msgs = [], isLive = false;
   const loadState = async () => {
     const l = await api("/api/crypto/ai/live");
-    if ((l.busy || l.current?.status === "paused") && l.current.symbol === sym) { isLive = !!l.busy; run = l.current; roles = l.current.roles; msgs = l.current.messages.slice(); return; }
+    if ((l.busy || ["paused","sync_stale"].includes(l.current?.status)) && l.current.symbol === sym) { isLive = !!l.busy; run = l.current; roles = l.current.roles; msgs = l.current.messages.slice(); return; }
     isLive = false;
     const rs = await api(`/api/crypto/ai/runs?symbol=${sym}&limit=1`);
     if (rs.length) {
@@ -774,7 +787,7 @@ async function pageTeam(params) {
       return `${i ? `<div class="step-line ${all ? "done" : ""}"></div>` : ""}<div class="step ${all ? "done" : any ? "active" : ""}"><div class="c">${all ? "✓" : i + 1}</div><span>${nm}</span></div>`; }).join("") + `<div class="step-count"><b>${done}</b> / ${ROLES.length} 已完成</div>`;
     const pct = Math.round((done / ROLES.length) * 100);
     const lv = isLive ? run : null, rnm = lv?.running_role ? (ROLE_NAME[lv.running_role] || lv.running_role) : "";
-    $("#pg-t").innerHTML = `${done} / ${ROLES.length} 已完成${run ? "・" + (isLive ? `執行中${rnm ? "・" + esc(rnm) : ""}・已執行 <span class="num" data-elapsed="${esc(run.started_at || run.created_at)}">${fmtDur(Date.now() - new Date(run.started_at || run.created_at))}</span>${lv?.last_issue ? `・<span class="tc-issue">${esc(lv.last_issue.text)}</span>` : ""}` : run.status === "done" ? `完成於 ${fmtTime(run.finished_at)}・耗時 ${Math.round(run.duration_s)} 秒${run.resumed ? `・補完成於 ${fmtTime(run.resumed.at)}` : ""}` : run.status === "failed" ? "失敗：" + esc(friendlyErr(run.error)) : run.status === "paused" ? "研究已暫停，進度已保存" : "") : ""}`;
+    $("#pg-t").innerHTML = `${done} / ${ROLES.length} 已完成${run ? "・" + (isLive ? `執行中${rnm ? "・" + esc(rnm) : ""}・已執行 <span class="num" data-elapsed="${esc(run.started_at || run.created_at)}">${fmtDur(Date.now() - new Date(run.started_at || run.created_at))}</span>${lv?.last_issue ? `・<span class="tc-issue">${esc(lv.last_issue.text)}</span>` : ""}` : run.status === "done" ? `完成於 ${fmtTime(run.finished_at)}・耗時 ${Math.round(run.duration_s)} 秒${run.resumed ? `・補完成於 ${fmtTime(run.resumed.at)}` : ""}` : run.status === "failed" ? "失敗：" + esc(friendlyErr(run.error)) : run.status === "paused" ? "研究已暫停，進度已保存" : run.status === "sync_stale" ? "超過10分鐘未同步，研究狀態待確認" : "") : ""}`;
     $("#pg-bar").style.width = pct + "%"; $("#pg-pct").textContent = pct + "%"; $("#ring").setAttribute("stroke-dasharray", `${(pct / 100) * 113} 113`);
     const c = run?.calls; $("#pg-calls").textContent = c ? "呼叫次數 " + fmtCalls(c) + (c.reconstructed ? "＊" : "") : ""; $("#pg-calls").title = callsTitle(c);
     const m = run?.models; $("#team-models").textContent = m ? `快速 ${m.quick.used || m.quick.model}・深度 ${m.deep.used || m.deep.model}` : `快速 ${A.quick.model}・深度 ${A.deep.model}`; $("#team-models").title = m ? `快速：${m.quick.key}；深度：${m.deep.key}` : "";
@@ -964,7 +977,7 @@ async function pageReports() {
     ${runs.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="依金鑰槽位，含失敗重試">呼叫次數（依槽位）</th><th>耗時</th><th></th></tr></thead><tbody>
     ${runs.map((r) => { const d = DIRS[r.decision]; const m = r.models || {};
       return `<tr class="run-row"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
-        <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
+        <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "sync_stale" ? `<span class="pill gray">同步中斷</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
         <td class="num">${r.status === "done" ? `${fmtLv(r.entry)} / <span class="down">${fmtLv(r.stop)}</span> / <span class="up">${fmtLv(r.take_profit)}</span>` : "—"}</td>
         <td class="muted num" style="font-size:12px">${m.quick ? `${esc(m.quick.used)}（槽位 ${m.quick.key_slot ?? "—"}）<br>${esc(m.deep.used)}（槽位 ${m.deep.key_slot ?? "—"}）${m.quick.fallback_reason ? '<br><span class="warn">快速已切換備援</span>' : ""}${m.deep.fallback_reason ? '<br><span class="warn">深度已切換備援</span>' : ""}` : "—"}</td>
         <td class="num" style="white-space:nowrap" title="${esc(callsTitle(r.calls))}">${fmtCalls(r.calls)}${r.calls?.reconstructed ? '<span class="warn" title="原始執行的呼叫次數由紀錄還原">＊</span>' : ""}</td><td class="num">${r.duration_s ? Math.round(r.duration_s) + " 秒" : "—"}</td>
