@@ -180,6 +180,8 @@ async function pollData() {
   try {
     const r = await fetch(`data/status.json?v=${Date.now()}`, { cache: "no-store" }); if (!r.ok) return;
     const st = await r.json();
+    const rev=document.querySelector('meta[name="eason-frontend"]')?.content;
+    if(st.frontend_revision && rev && rev!==st.frontend_revision){const url=new URL(location.href);url.searchParams.set("ui_revision",st.frontend_revision);location.replace(url.href);return;}
     if (DATA.published && st.published_at !== DATA.published) {
       DATA.cache = {}; DATA.cache["status.json"] = { t: Date.now(), v: st };
       const lr = (await J("runs.json"))[0];
