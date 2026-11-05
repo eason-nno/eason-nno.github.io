@@ -278,7 +278,7 @@ function renderNav(active) {
   const items = [["home", "#/", "總覽", ICON.home], ["coin", `#/coin/${lastCoin}`, "幣種研究", ICON.coin], ["team", "#/team", "AI 團隊", ICON.team],
     ["paper", "#/paper", "模擬交易", ICON.paper], ["reports", "#/reports", "研究報告", ICON.report]];
   $("#nav").innerHTML = items.map(([k, h, t, ic]) => k === "paper" ?
-    `<details class="nav-dropdown ${active === k ? "active" : ""}"><summary>${ic}<span>${t}</span><span class="chevron">▾</span></summary><div class="nav-menu"><a href="#/paper" ${location.hash === "#/paper" ? 'aria-current="page"' : ""}>AI 團隊策略</a><a href="#/paper/new" ${location.hash === "#/paper/new" ? 'aria-current="page"' : ""}>新策略</a></div></details>` :
+    `<details class="nav-dropdown ${active === k ? "active" : ""}"><summary>${ic}<span>${t}</span><span class="chevron">▾</span></summary><div class="nav-menu"><a href="#/paper" ${location.hash === "#/paper" ? 'aria-current="page"' : ""}>AI 團隊策略</a><a href="#/paper/new" ${location.hash === "#/paper/new" ? 'aria-current="page"' : ""}>測試1號</a><a href="#/paper/test2" ${location.hash === "#/paper/test2" ? 'aria-current="page"' : ""}>測試2號</a></div></details>` :
     `<a href="${h}" class="${k === active ? "active" : ""}" ${k === active ? 'aria-current="page"' : ""}>${ic}<span>${t}</span></a>`).join("") +
     `<a href="#/settings" class="${active === "settings" ? "active" : ""}">${ICON.gear}<span>設定</span></a>`;
   const dd = $(".nav-dropdown");
@@ -693,7 +693,7 @@ async function pageCoin(sym, params) {
 
 /* AI 團隊 */
 async function pageTeam(params) {
-  setTitle("AI 團隊研究室", "原版 12 位＋新策略經理・獨立分工");
+  setTitle("AI 團隊研究室", "原版 12 位＋策略測試經理・獨立分工");
   const [ov, lv, aset, newPaper] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/ai/live"), api("/api/crypto/ai/settings"), J("new-paper.json").catch(() => null)]);
   WATCH = ov.items.map((i) => i.symbol);
   let sym = coinKey(params.get("symbol") || (lv.busy ? lv.current.symbol : lastCoin));
@@ -754,7 +754,7 @@ async function pageTeam(params) {
   const stepCard = $("#stepper").closest("section"), progressCard = $(".prog").closest("section");
   $("#app").prepend(stepCard, progressCard);
   const strategyCard = $("#ag-new-strategy");
-  strategyCard.onclick = () => showSheet("新策略經理", strategyManagerHTML(newPaper));
+  strategyCard.onclick = () => showSheet("策略測試經理", strategyManagerHTML(newPaper));
   strategyCard.onkeydown = e => { if(e.key === "Enter" || e.key === " ") { e.preventDefault(); strategyCard.click(); } };
   $("#team-sym").onchange = (e) => { location.hash = `#/team?symbol=${e.target.value}`; };
   const render = () => {
@@ -985,7 +985,8 @@ async function pageReport(id) {
         <p class="ai-sum">${esc(dec.executive_summary || "")}</p>${originalActionHTML(dec,res.execution)}
         <div class="factors"><div class="bull"><h4 class="up">看多因素</h4><ul>${(dec.bull_factors || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div><div class="bear"><h4 class="down">看空因素</h4><ul>${(dec.bear_factors || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>
         ${(res.warnings || []).length ? `<div class="callout"><b>注意</b><span>${res.warnings.map(esc).join("；")}</span></div>` : ""}</section>
-      ${res.new_strategy?`<section class="card" style="margin-top:16px"><div class="card-h"><h2>新策略經理</h2></div><p class="note">${esc(res.new_strategy.state)}</p><a class="ok" href="#/paper/new">查看新策略帳戶與決策 ›</a></section>`:""}
+      ${previousReviewHTML(res.previous_review)}
+      ${res.new_strategy?`<section class="card" style="margin-top:16px"><div class="card-h"><h2>策略測試經理</h2></div><p class="note">${esc(res.new_strategy.state)}</p><a class="ok" href="#/paper/new">查看測試1號帳戶與決策 ›</a></section>`:""}
       <section class="card" style="margin-top:16px"><div class="rep-nav" id="rep-nav">${REPORT_ORDER.filter(([k]) => r.reports_html?.[k]).map(([k, t], i) => `<button class="tab outline ${i ? "" : "active"}" data-k="${k}">${esc(t.split("｜")[0])}</button>`).join("")}</div>
         <div class="md" id="rep-body"></div></section>
       ${r.data_inputs && Object.keys(r.data_inputs).length ? `<section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.chain}資料輸入快照（分析當下餵給 AI 的數據）</h2></div>
@@ -1117,6 +1118,7 @@ async function route() {
     else if (path === "/team") { renderNav("team"); await pageTeam(params); }
     else if (path === "/paper") { renderNav("paper"); await pagePaper(); }
     else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper(); }
+    else if (path === "/paper/test2") { renderNav("paper"); await pageNewPaper("test2"); }
     else if (path === "/reports") { renderNav("reports"); await pageReports(); }
     else if ((m = path.match(/^\/report\/(.+)$/))) { renderNav("reports"); await pageReport(decodeURIComponent(m[1])); }
     else if (path === "/settings") { renderNav("settings"); await pageSettings(); }
