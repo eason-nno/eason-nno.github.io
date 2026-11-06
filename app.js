@@ -271,7 +271,26 @@ function showSheet(titleHtml, bodyHtml) {
   document.body.appendChild(el); document.body.classList.add("noscroll");
   const k = (e) => { if (e.key === "Escape") closeSheet(); }; document.addEventListener("keydown", k); el._k = k;
 }
-function closeSheet() { const el = $("#sheet"); if (!el) return; document.removeEventListener("keydown", el._k); el.remove(); document.body.classList.remove("noscroll"); }
+function closeSheet() { const el = $("#sheet"); if (!el) return; document.removeEventListener("keydown", el._k); el.remove(); el._cleanup?.(); document.body.classList.remove("noscroll"); }
+
+function showRoleDebate(role,reportId){
+  const base='http://127.0.0.1:8800';
+  const src=base+'/debate?'+new URLSearchParams({role,report:reportId||'',parent:location.origin});
+  const previous=document.activeElement;
+  showSheet('與AI角色辯論',`<p class="note" data-debate-status>正在連接本機辯論室…</p><iframe class="debate-frame" title="私人角色辯論" src="${esc(src)}" sandbox="allow-scripts allow-same-origin" allow="local-network-access; loopback-network" referrerpolicy="no-referrer"></iframe>`);
+  const el=$('#sheet'),frame=$('iframe',el),status=$('[data-debate-status]',el);
+  el.classList.add('debate-wrap');el.dataset.route=location.hash;
+  const timer=setTimeout(()=>{status.textContent='本機辯論室尚未回應。請確認easonAgents已啟動並更新；若瀏覽器詢問本機連線權限，請依提示允許。';},12000);
+  const message=e=>{
+    if(e.origin!==base||e.source!==frame.contentWindow)return;
+    if(e.data?.type==='eason-debate-ready'){clearTimeout(timer);status.textContent='私人對話只保存在這台電腦；選單切換會同步切換實際帳戶。'}
+    if(e.data?.type==='eason-debate-close')closeSheet();
+  };
+  const focus=e=>{if(!el.contains(e.target))$('.sheet-x',el).focus()};
+  window.addEventListener('message',message);document.addEventListener('focusin',focus);$('.sheet-x',el).focus();
+  el._cleanup=()=>{clearTimeout(timer);window.removeEventListener('message',message);document.removeEventListener('focusin',focus);previous?.focus()};
+}
+
 function toastSignal(s) {
   const el = document.createElement("div");
   el.className = `toast ${s.direction}`;
@@ -740,8 +759,7 @@ async function pageTeam(params) {
     showSheet(`${smallIc(r.icon || "chat", 16)} ${esc(r.name)}<span class="mchip">${esc(r.team || "")}</span>`, `${st.score != null ? `<div class="chip-muted" style="margin-bottom:8px">多空分數 ${st.score}</div>` : ""}${st.finding ? `<div class="callout" style="margin:0 0 12px"><b>重點</b><span>${esc(st.finding)}</span></div>` : ""}${body}
       <p class="note">${run ? `${esc(baseOf(run.symbol))}・${fmtTime(run.created_at)}（台北）・模型 ${esc(st.model || run?.models?.[r.tier]?.used || "")}` : ""}</p>`);
   };
-  const debateUrl = key => "http://127.0.0.1:8800/debate?"+new URLSearchParams({role:key,report:run?.id||""});
-  const card = (r) => `<div class="agent" id="ag-${r.key}" tabindex="0" role="button" aria-label="${esc(r.name)}：查看完整報告"><div class="ah"><span class="ai">${ICON[r.icon]}</span><span class="an">${esc(r.name)}</span></div><p>${esc(r.desc)}</p><div class="find" data-f hidden></div><div class="prev" data-p hidden></div><button class="more" data-more hidden>展開全文 ▾</button><div class="af"><span class="pill gray" data-st>等待中</span><span class="tier">${r.tier === "deep" ? "深度思考" : "快速思考"}</span><span class="mchip" data-m></span></div><a data-debate target="_blank" rel="noopener noreferrer" href="${esc(debateUrl(r.key))}">與他辯論 ↗（本機）</a></div>`;
+  const card = (r) => `<div class="agent" id="ag-${r.key}" tabindex="0" role="button" aria-label="${esc(r.name)}：查看完整報告"><div class="ah"><span class="ai">${ICON[r.icon]}</span><span class="an">${esc(r.name)}</span></div><p>${esc(r.desc)}</p><div class="find" data-f hidden></div><div class="prev" data-p hidden></div><button class="more" data-more hidden>展開全文 ▾</button><div class="af"><span class="pill gray" data-st>等待中</span><span class="tier">${r.tier === "deep" ? "深度思考" : "快速思考"}</span><span class="mchip" data-m></span></div><button type="button" class="more" data-debate="${r.key}">與他辯論（本機）</button></div>`;
   const col = (n) => ROLES.filter((r) => r.col === n).map(card).join("");
   $("#app").innerHTML = `
   ${noteHTML()}
@@ -768,8 +786,8 @@ async function pageTeam(params) {
   const stepCard = $("#stepper").closest("section"), progressCard = $(".prog").closest("section");
   $("#app").prepend(stepCard, progressCard);
   const strategyCard = $("#ag-new-strategy");
-  strategyCard.insertAdjacentHTML("beforeend",`<a data-debate target="_blank" rel="noopener noreferrer" href="${esc(debateUrl("strategy"))}">與他辯論 ↗（本機）</a>`);
-  document.querySelectorAll("[data-debate]").forEach(el=>{ el.onclick=e=>e.stopPropagation(); el.onkeydown=e=>e.stopPropagation(); });
+  strategyCard.insertAdjacentHTML("beforeend",`<button type="button" class="more" data-debate="strategy">與他辯論（本機）</button>`);
+  document.querySelectorAll("[data-debate]").forEach(el=>{ el.onclick=e=>{e.stopPropagation();showRoleDebate(el.dataset.debate,run?.id)}; el.onkeydown=e=>e.stopPropagation(); });
   strategyCard.onclick = () => showSheet("策略測試經理", strategyManagerHTML(newPaper));
   strategyCard.onkeydown = e => { if(e.key === "Enter" || e.key === " ") { e.preventDefault(); strategyCard.click(); } };
   $("#team-sym").onchange = (e) => { location.hash = `#/team?symbol=${e.target.value}`; };
@@ -1120,7 +1138,7 @@ async function pageSettings() {
 /* router / top bar */
 function setTitle(t, chip) { document.title = "easonAgents"; $("#app").setAttribute("aria-label", t); }
 async function route() {
-  pageCleanup.forEach((f) => { try { f(); } catch (e) {} }); pageCleanup = []; closeSheet();
+  pageCleanup.forEach((f) => { try { f(); } catch (e) {} }); pageCleanup = []; if(!$("#sheet")?.classList.contains("debate-wrap") || $("#sheet").dataset.route!==location.hash) closeSheet();
   const h = location.hash || "#/";
   const [path, qs] = h.slice(1).split("?");
   const params = new URLSearchParams(qs || "");
