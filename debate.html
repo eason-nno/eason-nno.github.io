@@ -1,0 +1,112 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>easonAgents</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#181a20;color:#eaecef;font:15px system-ui}header{padding:18px 24px;border-bottom:1px solid #333b47}h1{font-size:22px;margin:0}small,.muted{color:#9aa4b3}main{display:grid;grid-template-columns:300px 1fr;gap:18px;padding:22px;max-width:1500px;margin:auto}aside,section{background:#20252d;border:1px solid #333b47;border-radius:10px;padding:18px}label{display:block;margin:16px 0 7px}select,textarea,button{font:inherit;color:inherit;background:#181a20;border:1px solid #485364;border-radius:6px;padding:10px}select,textarea{width:100%}textarea{resize:vertical;min-height:110px}button{cursor:pointer}button.primary{background:#0ecb81;color:#101820;font-weight:700}button:disabled{opacity:.45;cursor:wait}.bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:12px 0}.message{padding:15px;margin:12px 0;border:1px solid #333b47;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere}.user{border-left:3px solid #0ecb81}.answer{background:#181a20}.status{color:#9aa4b3}.error{color:#ff949d}.context{max-height:260px;overflow:auto;white-space:pre-wrap;font-size:13px}a{color:#0ecb81}@media(max-width:760px){main{grid-template-columns:1fr;padding:12px}header{padding:16px}}
+body.embedded header{display:none}body.embedded main{padding:12px;gap:12px}body.embedded aside,body.embedded section{padding:14px}body.embedded aside>a{display:none}</style></head><body><header><h1>角色辯論室</h1><small>本機私人討論・研究與策略評估優先・不直接修改報告或交易</small></header><main><aside><label>研究報告</label><select id="report"></select><label>對話角色</label><select id="role"></select><label>對話帳戶（切換即生效）</label><select id="account"><option value="original">AI團隊帳戶</option><option value="averaging">測試1號</option><option value="test2">測試2號</option></select><div class="bar"><button id="open" class="primary">開啟／繼續對話</button><button id="new">新對話</button></div><label>已保存的私人對話</label><select id="history"><option value="">選擇對話</option></select><p class="muted" id="usage"></p><p class="muted">對話只保存在本機。API金鑰由系統匣設定。</p><a href="https://eason-nno.github.io/#/team" target="_blank" rel="noopener noreferrer">公開AI團隊頁 ↗</a></aside><section><h2 id="title">選擇報告與角色</h2><p id="notice" class="status">正在讀取…</p><details><summary>原報告與目前行情／帳戶參考</summary><div id="context" class="context"></div></details><div id="messages" aria-live="polite"></div><label for="question">提出論點或反駁</label><textarea id="question" maxlength="4000" placeholder="例如：最新價格已跌破支撐，你為什麼仍維持原本看法？"></textarea><div class="bar"><button id="send" class="primary" disabled>送出辯論</button><button id="summary" disabled>整理爭議與摘要</button><span id="state" class="status"></span></div></section></main><script>
+'use strict';
+const $=id=>document.getElementById(id);
+let session=null,boot=null,poll=null,revision=0,switching=false,retryRequest=null;
+const accountName=s=>s==='original'?'AI團隊帳戶':s==='test2'?'測試2號':'測試1號';
+const selected=()=>({report_id:$('report').value,role:$('role').value,strategy:$('role').value==='strategy'?$('account').value:'original'});
+const matches=()=>session&&Object.entries(selected()).every(([k,v])=>session[k]===v);
+function controls(pending=false){$('send').disabled=$('summary').disabled=switching||pending||!matches()}
+async function api(path,method='GET',body){
+  if(window.EASON_REMOTE)return remoteApi(path,method,body);
+  const r=await fetch('/api/debate'+path,{method,headers:{'X-TA-Client':'1','Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});
+  let x;try{x=await r.json()}catch{throw Error('本機辯論室未能完成請求，請稍後重試')}
+  if(!r.ok)throw Error(typeof x.detail==='string'?x.detail:'對話版本或資料不符，請重新整理後再試');return x;
+}
+let remoteVisitor;
+let remoteRefreshing=false;
+async function remoteApi(path,method,body){
+  if(!remoteVisitor){
+    try{remoteVisitor=sessionStorage.getItem('eason-remote-visitor')}catch{}
+    if(!/^[a-f0-9]{64}$/.test(remoteVisitor||''))remoteVisitor=Array.from(crypto.getRandomValues(new Uint8Array(32)),v=>v.toString(16).padStart(2,'0')).join('');
+    try{sessionStorage.setItem('eason-remote-visitor',remoteVisitor)}catch{}
+  }
+  const headers={'X-Eason-Visitor':remoteVisitor,'Content-Type':'application/json'};
+  const id=crypto.randomUUID().replaceAll('-','');
+  const r=await fetch('/api/remote/queue',{method:'POST',headers,body:JSON.stringify({id,path,method,body}),cache:'no-store'}),queued=await r.json();
+  if(!r.ok)throw Error(queued.detail||'外網辯論暫時無法連線');
+  const deadline=Date.now()+120000;
+  while(Date.now()<deadline){
+    await new Promise(resolve=>setTimeout(resolve,1500));
+    const poll=await fetch('/api/remote/jobs/'+id,{headers,cache:'no-store'}),value=await poll.json();
+    if(!poll.ok)throw Error(value.detail||'外網請求未完成');
+    if(value.done){if(value.status>=400)throw Error(value.body?.detail||'對話請求未完成');return value.body;}
+  }
+  throw Error('研究主機尚未回應，請稍後重新開啟對話；不會自動重送問題。');
+}
+function text(tag,value,cls){const n=document.createElement(tag);n.textContent=value;n.className=cls||'';return n}
+function options(id,items){$(id).replaceChildren(...items.map(([value,label])=>new Option(label,value)))}
+function chooseRole(){
+  const manager=$('role').value==='strategy';$('account').disabled=!manager;
+  for(const o of $('account').options)o.hidden=manager?o.value==='original':o.value!=='original';
+  if(!manager)$('account').value='original';else if($('account').value==='original')$('account').value='averaging';
+}
+function binding(){
+  $('title').textContent=boot.roles[session.role]+'・'+accountName(session.strategy)+'・私人辯論';
+  $('notice').textContent='實際綁定：'+accountName(session.strategy)+'／'+session.report_id+'。對話只供分析，不執行交易。';$('notice').className='status';
+}
+async function history(){const s=await api('/sessions');options('history',[['','選擇對話'],...s.map(x=>[x.id,boot.roles[x.role]+'・'+accountName(x.strategy)+'・'+x.report_id])]);if(session)$('history').value=session.id}
+async function context(){
+  const id=session.id,x=await api('/context/'+id);if(session?.id!==id)return;
+  $('context').textContent='原報告時間：'+x.report_at+'\n\n'+x.original_report+'\n\n目前行情與時間：\n'+JSON.stringify(x.current_market,null,2)+'\n\n'+accountName(session.strategy)+'：\n'+JSON.stringify(x.account,null,2)+(x.strategy_review?'\n\n本帳戶上次實際決策與成交：\n'+JSON.stringify(x.strategy_review,null,2):'');
+}
+function usage(){$('usage').textContent='美西配額日 '+boot.quota_day+'；私人對話每組每日上限 '+boot.settings.daily_limit+' 次（含重試，可在本機控制台調整）。目前 '+Object.entries(boot.usage).map(([k,v])=>'第'+k+'組 '+v+'次').join('／')}
+function stopPoll(){if(poll)clearInterval(poll);poll=null}
+async function refresh(){
+  if(window.EASON_REMOTE&&remoteRefreshing)return;
+  if(window.EASON_REMOTE)remoteRefreshing=true;
+  try{
+  if(!session||switching)return;
+  const id=session.id,x=await api('/sessions/'+id);if(session?.id!==id||switching)return;
+  session=x.session;const pending=x.turns.some(t=>['queued','running'].includes(t.status));controls(pending);
+  $('state').textContent=pending?'排隊或回覆中；正式研究與策略評估優先':'';
+  $('messages').replaceChildren(...x.turns.flatMap(t=>[text('div','你：'+t.text,'message user'),text('div',t.status==='done'?t.answer:t.status==='error'?t.error:t.status==='running'?'角色正在回覆…':'已排隊，等待可用時段…','message '+(t.status==='error'?'error':'answer'))]));
+  if(pending&&!poll)poll=setInterval(()=>refresh().catch(error),3000);
+  if(!pending&&poll){stopPoll();boot=await api('/bootstrap');usage()}
+  }finally{remoteRefreshing=false;}
+}
+function beginSwitch(){const n=++revision;switching=true;session=null;stopPoll();controls();$('messages').replaceChildren();$('context').textContent='';$('notice').textContent='正在切換對話…';return n}
+async function open(fresh=false){
+  const n=beginSwitch(),selection=selected();
+  try{const next=await api('/sessions','POST',{...selection,new:fresh});if(n!==revision)return;
+    session=next;switching=false;binding();await refresh();await context();await history();
+  }catch(e){if(n===revision){switching=false;error(e)}}
+}
+async function send(mode){
+  if(!matches()||switching)throw Error('帳戶切換尚未完成，請稍後再送出');
+  const value=mode==='summary'?($('question').value.trim()||'請整理目前討論的爭議與共識'):$('question').value.trim();if(!value)throw Error('請輸入問題');
+  const id=session.id,scope=selected();controls(true);
+  if(!retryRequest||retryRequest.chat!==id||retryRequest.body.text!==value||retryRequest.body.mode!==mode)
+    retryRequest={chat:id,body:{id:crypto.randomUUID(),text:value,mode,...scope}};
+  const request=retryRequest;await api('/sessions/'+id+'/turns','POST',request.body);if(retryRequest===request)retryRequest=null;
+  if(session?.id===id){$('question').value='';await refresh()}
+}
+function error(e){$('notice').textContent=e.message;$('notice').className='error';controls();if(session&&!switching)refresh().catch(()=>{})}
+for(const id of ['role','report','account'])$(id).onchange=()=>{chooseRole();return open(false)};
+$('open').onclick=()=>open(false);$('new').onclick=()=>open(true);
+$('send').onclick=()=>send('debate').catch(error);$('summary').onclick=()=>send('summary').catch(error);
+$('history').onchange=async()=>{
+  const id=$('history').value;if(!id)return;const n=beginSwitch();
+  try{const x=await api('/sessions/'+id);if(n!==revision)return;
+    session=x.session;$('role').value=session.role;
+    if(![...$('report').options].some(o=>o.value===session.report_id))$('report').append(new Option(session.report_id,session.report_id));
+    $('report').value=session.report_id;$('account').value=session.strategy;chooseRole();switching=false;binding();await refresh();await context();
+  }catch(e){if(n===revision){switching=false;error(e)}}
+};
+const embedded=window.parent!==window,allowedParents=['https://eason-nno.github.io',location.origin];
+if(embedded){document.body.classList.add('embedded');const parentOrigin=new URLSearchParams(location.search).get('parent');if(allowedParents.includes(parentOrigin)){
+  window.parent.postMessage({type:'eason-debate-ready'},parentOrigin);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')window.parent.postMessage({type:'eason-debate-close'},parentOrigin)});
+}}
+(async()=>{
+  if(window.EASON_REMOTE){
+    document.querySelectorAll('p.muted').forEach(p=>{if(p.textContent.includes('對話只保存在本機'))p.textContent='外網對話經雲端轉送（資料1小時後失效，連線時清除），紀錄保存在研究主機；與其他訪客及原有私人對話隔離。外網每人／網路每日10次、總計40次，美西午夜重置；正式研究優先。';});
+  }
+  boot=await api('/bootstrap');options('role',Object.entries(boot.roles));options('report',boot.reports.map(r=>[r.id,r.symbol+'・'+r.created_at]));
+  const q=new URLSearchParams(location.search);if(boot.roles[q.get('role')])$('role').value=q.get('role');
+  if(boot.reports.some(r=>r.id===q.get('report')))$('report').value=q.get('report');
+  chooseRole();if($('role').value==='strategy'&&['averaging','test2'].includes(q.get('strategy')))$('account').value=q.get('strategy');
+  usage();await history();if(boot.reports.length)await open(false);else $('notice').textContent='等待第一份完成的研究報告';
+})().catch(error);
+</script></body></html>

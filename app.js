@@ -274,16 +274,17 @@ function showSheet(titleHtml, bodyHtml) {
 function closeSheet() { const el = $("#sheet"); if (!el) return; document.removeEventListener("keydown", el._k); el.remove(); el._cleanup?.(); document.body.classList.remove("noscroll"); }
 
 function showRoleDebate(role,reportId){
-  const base='http://127.0.0.1:8800';
+  const base=location.origin==='https://eason-nno.github.io'?'https://easonagents-share.pages.dev':'http://127.0.0.1:8800';
+  const remote=base.startsWith('https:');
   const src=base+'/debate?'+new URLSearchParams({role,report:reportId||'',parent:location.origin});
   const previous=document.activeElement;
-  showSheet('與AI角色辯論',`<p class="note" data-debate-status>正在連接本機辯論室…</p><iframe class="debate-frame" title="私人角色辯論" src="${esc(src)}" sandbox="allow-scripts allow-same-origin" allow="local-network-access; loopback-network" referrerpolicy="no-referrer"></iframe>`);
+  showSheet('與AI角色辯論',`<p class="note" data-debate-status>正在連接辯論室…</p><iframe class="debate-frame" title="私人角色辯論" src="${esc(src)}" sandbox="allow-scripts allow-same-origin" allow="local-network-access; loopback-network" referrerpolicy="no-referrer"></iframe>`);
   const el=$('#sheet'),frame=$('iframe',el),status=$('[data-debate-status]',el);
   el.classList.add('debate-wrap');el.dataset.route=location.hash;
-  const timer=setTimeout(()=>{status.textContent='本機辯論室尚未回應。請確認easonAgents已啟動並更新；若瀏覽器詢問本機連線權限，請依提示允許。';},12000);
+  const timer=setTimeout(()=>{status.textContent=remote?'外網辯論尚未回應。請確認研究主機已更新並保持連線。':'本機辯論室尚未回應。請確認easonAgents已啟動並允許本機連線。';},12000);
   const message=e=>{
     if(e.origin!==base||e.source!==frame.contentWindow)return;
-    if(e.data?.type==='eason-debate-ready'){clearTimeout(timer);status.textContent='私人對話只保存在這台電腦；選單切換會同步切換實際帳戶。'}
+    if(e.data?.type==='eason-debate-ready'){clearTimeout(timer);status.textContent=remote?'外網對話按訪客隔離，經雲端暫存轉送至研究主機；正式研究優先。':'私人對話只保存在這台電腦；選單切換會同步切換實際帳戶。'}
     if(e.data?.type==='eason-debate-close')closeSheet();
   };
   const focus=e=>{if(!el.contains(e.target))$('.sheet-x',el).focus()};
