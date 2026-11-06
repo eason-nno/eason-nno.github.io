@@ -374,6 +374,27 @@ const smallIc = (k, px = 15) => ICON[k].replace("<svg", `<svg style="width:${px}
 
 /* 總覽 */
 let ovSel = null, ovFilter = "all";
+/* 成交額treemap：面積正比於quote_volume，不以排名或漲跌幅分配。 */
+function volumeTreemap(items,width,height){
+  if(!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0)return [];
+  const rows=(items||[]).map(item=>({item,value:Number(item.quote_volume)})).filter(x=>Number.isFinite(x.value)&&x.value>0)
+    .sort((a,b)=>b.value-a.value||String(a.item.symbol).localeCompare(String(b.item.symbol))).slice(0,10);
+  if(!rows.length)return [];
+  const max=rows[0].value;rows.forEach(r=>r.weight=r.value/max);
+  for(let i=rows.length-1;i>=0;i--)if(!rows[i].weight)rows.splice(i,1);
+  const total=rows.reduce((sum,r)=>sum+r.weight,0),result=[];
+  function split(group,x,y,w,h){
+    const sum=group.reduce((n,r)=>n+r.weight,0);
+    if(group.length===1){result.push({...group[0],x,y,w,h,share:group[0].weight/total});return}
+    let n=1,first=group[0].weight,best=Math.abs(first-sum/2);
+    for(let i=2,part=first;i<group.length;i++){part+=group[i-1].weight;const distance=Math.abs(part-sum/2);if(distance<best){best=distance;n=i;first=part}}
+    const ratio=first/sum;
+    if(w>=h){const edge=w*ratio;split(group.slice(0,n),x,y,edge,h);split(group.slice(n),x+edge,y,w-edge,h)}
+    else{const edge=h*ratio;split(group.slice(0,n),x,y,w,edge);split(group.slice(n),x,y+edge,w,h-edge)}
+  }
+  split(rows,0,0,width,height);return result;
+}
+
 async function pageOverview() {
   setTitle("市場總覽", "即時資料・Binance USDC 永續");
   const app = $("#app");
@@ -446,13 +467,25 @@ async function pageOverview() {
   $$("#ov-tabs .tab").forEach((b) => b.onclick = () => { ovFilter = b.dataset.f; $$("#ov-tabs .tab").forEach((x) => x.classList.toggle("active", x === b)); renderRows(); });
 
 
-  const renderHeat = (cat) => {
-    const it = (cat && cat.kind === "top_volume" && cat.items) || [];
-    if (!it.length) { $("#heat").innerHTML = `<div class="empty-state" style="grid-column:1/-1;grid-row:1/-1"><b>成交額排行載入中</b></div>`; return; }
-    const col = (x) => { const a = Math.min(Math.abs(x) / 5, 1) * 0.55 + 0.25; return x >= 0 ? `rgba(30,170,105,${a})` : `rgba(220,70,90,${a})`; };
-    $("#heat").innerHTML = it.slice(0, 10).map((c, idx) => `<div class="tile ${idx === 0 ? "big" : ""}" style="background:${col(c.change_pct)}" title="${esc(c.symbol)}・最新 ${fmtPrice(c.last)}・24h 成交額 ${fmtBig(c.quote_volume)} USDC"><b>${esc(c.name)}</b><span class="num">${fmtPct(c.change_pct)}</span><small>${fmtBig(c.quote_volume)} USDC</small></div>`).join("");
-    $("#heat-note").textContent = `${cat.note || ""}・更新 ${fmtTime(cat.updated_at)}`;
+  let heatCategory=null,heatFrame=null;
+  const drawHeat = () => {
+    heatFrame=null;const cat=heatCategory,el=$("#heat");if(!el)return;
+    const rect=el.getBoundingClientRect(),items=(cat?.kind==="top_volume"&&cat.items)||[];
+    const boxes=volumeTreemap(items,rect.width,rect.height);
+    if(!boxes.length){el.innerHTML='<div class="empty-state" style="height:100%"><b>成交額排行載入中／尚無有效資料</b></div>';return}
+    const color=value=>Number.isFinite(value)?`rgba(${value>=0?"30,170,105":"220,70,90"},${Math.min(Math.abs(value)/5,1)*.55+.25})`:'#29313b';
+    el.innerHTML=boxes.map(box=>{
+      const c=box.item,pct=c.change_pct==null||c.change_pct===''?NaN:Number(c.change_pct),change=Number.isFinite(pct)?fmtPct(pct):'—';
+      const compact=box.w<120||box.h<75,mini=box.w<65||box.h<42,micro=box.w<28||box.h<18;
+      const description=`${c.symbol}・24h ${change}・成交額 ${fmtBig(c.quote_volume)} USDC・占比 ${(box.share*100).toFixed(2)}%`;
+      return `<button type="button" class="tile${compact?' heat-compact':''}${mini?' heat-mini':''}${micro?' heat-micro':''}" data-heat-symbol="${esc(c.symbol)}" data-volume-share="${box.share}" style="left:${box.x/rect.width*100}%;top:${box.y/rect.height*100}%;width:${box.w/rect.width*100}%;height:${box.h/rect.height*100}%;background:${color(pct)}" title="${esc(description)}" aria-label="${esc(description)}"><b>${esc(c.name||baseOf(c.symbol))}</b><span class="num">${change}</span><small>${fmtBig(c.quote_volume)} USDC</small></button>`;
+    }).join('');
+    $$('[data-heat-symbol]',el).forEach(button=>button.onclick=()=>toast(esc(button.title)));
+    $("#heat-note").textContent=`面積依24h成交額占比・顏色為漲跌幅・小區塊可點選查看・${cat.note||''}・更新 ${fmtTime(cat.updated_at)}`;
   };
+  const renderHeat=cat=>{heatCategory=cat;if(heatFrame===null)heatFrame=requestAnimationFrame(drawHeat)};
+  const heatResize=new ResizeObserver(()=>{if(heatFrame===null)heatFrame=requestAnimationFrame(drawHeat)});heatResize.observe($("#heat"));
+  pageCleanup.push(()=>{heatResize.disconnect();if(heatFrame!==null)cancelAnimationFrame(heatFrame)});
 
   let aiRuns = await api("/api/crypto/ai/runs?limit=20").catch(() => []);
   const aiLive = (d.ai_live?.messages || []).map((m) => ({ ...m, symbol: d.ai_live.symbol }));
@@ -870,7 +903,7 @@ async function pagePaper() {
   const REASON = (r) => !r ? "—" : /停損/.test(r) ? "停損" : /停利/.test(r) ? "停利" : /到期/.test(r) ? "到期" : /反向/.test(r) ? "反向訊號" : r;
   const dur = (ms) => { if (ms == null) return "—"; const m = Math.round(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60; return `${d ? d + "天" : ""}${d || h ? h + "小時" : ""}${mm}分鐘`; };
   const contract = (o) => `<div class="pc-name"><b>${esc(o.symbol)}</b><span class="tag">永續</span><span class="tag lev">${o.leverage || LEV}x</span></div>`;
-  const runLink = (o) => o.run_id ? `<a class="ok" href="#/report/${encodeURIComponent(o.run_id)}">AI 報告</a>` : "";
+  const runLink = (o) => {const id=o.position_review_id?o.report_id:o.run_id;return id?`<a class="ok" href="#/report/${encodeURIComponent(id)}">${o.position_review_id?"參考研究":"AI 報告"}</a>`:"";};
   const markOf = (o) => { const k = coinKey(o.symbol), m = MK.marks[k]; if (m) return m.px; const t = live.tickers[k] || MK.tickers[k]; return t ? t.last : o.mark_price; };
   const margin = (o) => o.margin || (o.notional ? o.notional / LEV : null);
   const unreal = (o) => { const mk = markOf(o); if (mk == null) return null; return (mk - o.fill_price) * o.qty * (o.side === "LONG" ? 1 : -1) + (o.funding_total || 0); };
@@ -896,6 +929,8 @@ async function pagePaper() {
       ${P.funding.length ? `<table class="tbl"><thead><tr><th>結算時間（台北）</th><th>合約</th><th>方向</th><th>費率</th><th>結算價</th><th>金額</th></tr></thead><tbody>
         ${P.funding.slice().reverse().map((f) => `<tr><td class="num">${fmtTime(f.funding_ms)}</td><td>${esc(f.symbol)}</td><td>${SIDE[f.side][0]}</td><td class="num">${(f.rate * 100).toFixed(4)}%</td><td class="num">${fmtPrice(f.price)}</td><td class="num ${signCls(f.payment)}">${usd(f.payment, 4)}</td></tr>`).join("")}</tbody></table>`
         : `<div class="empty-state" style="height:110px"><b>尚無資金費紀錄</b><small>持倉跨過 Binance 結算時間才會計入（BTC / ETH 每 8 小時：台北 00:00、08:00、16:00；ZEC 每 4 小時）。</small></div>`}</section>
+    <section class="card"><div class="card-h"><h2>${ICON.people || ICON.shield}夜間持倉評估</h2></div><p class="note">投資組合經理於設定的停報時段每小時檢查原版現有持倉／委託，不產生新研究報告；價格保護持續運作。開關位於本機控制台。</p>
+    ${(P.position_reviews||[]).length?`<div class="review-list">${P.position_reviews.map(r=>`<details class="din"><summary>${esc(baseOf(r.symbol))}・${fmtTime(r.created_at)}・${esc(({completed:"已評估",failed:"未完成",interrupted:"已中斷",running:"評估中",ready:"驗證中"})[r.status]||r.status)}・${esc(({HOLD:"續抱",CLOSE:"只平倉",REVERSE:"反手",UPDATE_RISK:"調整保護",CANCEL_ORDER:"取消委託",WAIT:"觀望"})[r.decision?.action]||"")}</summary><div class="note" style="padding:12px"><p>${esc(r.decision?.executive_summary||r.error||"等待評估結果")}</p><p>${esc(r.execution?.reason||"")}</p><p>下次檢查：${esc(r.decision?.invalidation||"—")}・模型 ${esc(r.model||"—")}</p>${r.report_id?`<a class="ok" href="#/report/${encodeURIComponent(r.report_id)}">參考研究</a>`:""}</div></details>`).join("")}</div>`:'<p class="note">尚無夜間評估紀錄；沒有持倉／委託時不呼叫AI。</p>'}</section>
     <section class="card"><div class="card-h"><h2>${ICON.shield}模擬規則</h2></div>
       <ul class="bullets" style="font-size:12.8px;line-height:1.7">
         <li>帳戶：虛擬 ${money(P.initial)} USDC（v1.0.7 以前的舊紀錄以 USDT 計，數值直接沿用）；權益 = 初始資金 + 已實現價差 + 累計資金費；手續費 = 0。</li>

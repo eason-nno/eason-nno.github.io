@@ -20,12 +20,15 @@ function bindTradeTabs(render) {
     };
   });
 }
+function tradeReportId(order) {
+  return order.position_review_id ? order.report_id : (order.report_id || order.run_id);
+}
 function tradeFills(P, strategy) {
   const out = [];
   if (strategy === "original") {
     for(const o of P.orders || []) {
-      if (["open", "closed"].includes(o.status) && o.fill_ms && o.fill_price > 0 && o.qty > 0) out.push({id:`${o.id}-open`,symbol:o.symbol,side:o.side,action:"開倉",ts:o.fill_ms,price:o.fill_price,qty:o.qty,report_id:o.run_id});
-      if(o.status === "closed" && o.close_ms && o.close_price > 0 && o.qty > 0) out.push({id:`${o.id}-close`,symbol:o.symbol,side:o.side,action:"平倉",ts:o.close_ms,price:o.close_price,qty:o.closed_qty || o.qty,report_id:o.run_id});
+      if (["open", "closed"].includes(o.status) && o.fill_ms && o.fill_price > 0 && o.qty > 0) out.push({id:`${o.id}-open`,symbol:o.symbol,side:o.side,action:"開倉",ts:o.fill_ms,price:o.fill_price,qty:o.qty,report_id:tradeReportId(o)});
+      if(o.status === "closed" && o.close_ms && o.close_price > 0 && o.qty > 0) out.push({id:`${o.id}-close`,symbol:o.symbol,side:o.side,action:"平倉",ts:o.close_ms,price:o.close_price,qty:o.closed_qty || o.qty,report_id:tradeReportId(o)});
     }
   } else {
     for(const c of P.cycles || []) {
@@ -42,7 +45,7 @@ function tradeFills(P, strategy) {
 function tradeOrdersHTML(orders, strategy) {
   const names={pending:"掛單中",filled:"已成交",open:"已成交・持倉中",closed:"已成交・已平倉",cancelled:"已取消",rejected:"拒單",same_dir_refresh:"同向更新紀錄"};
   if(!orders.length)return '<div class="empty-state"><b>尚無委託紀錄</b></div>';
-  return `<div class="table-scroll"><table class="tbl trade-record-table"><thead><tr><th>合約／方向</th><th>委託方式</th><th>委託價</th><th>${strategy === "original" ? "數量" : strategy === "test2" ? "投入保證金／減倉量" : "申請保證金（USDC）"}</th><th>狀態</th><th>委託時間（台北）</th><th>成交時間（台北）</th><th>備註</th><th></th></tr></thead><tbody>${orders.slice().sort((a,b)=>b.created_ms-a.created_ms).map(o=>`<tr><td><b>${esc(o.symbol)}</b><small class="${(o.position_side || o.side) === "LONG" ? "up" : "down"}"> ${["REDUCE","CLOSE"].includes(o.action) ? ((o.position_side || o.side) === "LONG" ? "平多" : "平空") : ((o.position_side || o.side) === "LONG" ? "做多" : "做空")}</small></td><td>${o.order_type === "MARKET" ? "市價" : o.order_type === "LIMIT" ? "限價" : "—"}</td><td class="num">${fmtPrice(o.entry_price ?? o.entry)}</td><td class="num">${["REDUCE","CLOSE"].includes(o.action) ? fmtPrice(o.qty ?? (o.close_lots || []).reduce((sum,l)=>sum+l.qty,0),6)+" "+esc(baseOf(o.symbol)) : fmtPrice(strategy === "original" ? o.qty : o.requested_margin_usdc, strategy === "original" ? 6 : 2)}</td><td>${esc(names[o.status] || o.status)}</td><td class="num">${fmtTime(o.created_ms)}</td><td class="num">${fmtTime(o.fill_ms)}</td><td class="wrap">${esc(o.note || o.close_reason || o.reason || "—")}</td><td>${o.report_id || o.run_id ? `<a class="ok" href="#/report/${encodeURIComponent(o.report_id || o.run_id)}">研究報告</a>` : ""}</td></tr>`).join("")}</tbody></table></div><p class="note">沿用已保存資料；未記錄的欄位顯示 —。同向更新是紀錄，不代表新增成交。</p>`;
+  return `<div class="table-scroll"><table class="tbl trade-record-table"><thead><tr><th>合約／方向</th><th>委託方式</th><th>委託價</th><th>${strategy === "original" ? "數量" : strategy === "test2" ? "投入保證金／減倉量" : "申請保證金（USDC）"}</th><th>狀態</th><th>委託時間（台北）</th><th>成交時間（台北）</th><th>備註</th><th></th></tr></thead><tbody>${orders.slice().sort((a,b)=>b.created_ms-a.created_ms).map(o=>`<tr><td><b>${esc(o.symbol)}</b><small class="${(o.position_side || o.side) === "LONG" ? "up" : "down"}"> ${["REDUCE","CLOSE"].includes(o.action) ? ((o.position_side || o.side) === "LONG" ? "平多" : "平空") : ((o.position_side || o.side) === "LONG" ? "做多" : "做空")}</small></td><td>${o.order_type === "MARKET" ? "市價" : o.order_type === "LIMIT" ? "限價" : "—"}</td><td class="num">${fmtPrice(o.entry_price ?? o.entry)}</td><td class="num">${["REDUCE","CLOSE"].includes(o.action) ? fmtPrice(o.qty ?? (o.close_lots || []).reduce((sum,l)=>sum+l.qty,0),6)+" "+esc(baseOf(o.symbol)) : fmtPrice(strategy === "original" ? o.qty : o.requested_margin_usdc, strategy === "original" ? 6 : 2)}</td><td>${esc(names[o.status] || o.status)}</td><td class="num">${fmtTime(o.created_ms)}</td><td class="num">${fmtTime(o.fill_ms)}</td><td class="wrap">${esc(o.note || o.close_reason || o.reason || "—")}</td><td>${tradeReportId(o) ? `<a class="ok" href="#/report/${encodeURIComponent(tradeReportId(o))}">研究報告</a>` : ""}</td></tr>`).join("")}</tbody></table></div><p class="note">沿用已保存資料；未記錄的欄位顯示 —。同向更新是紀錄，不代表新增成交。</p>`;
 }
 function tradeFillsHTML(fills) {
   if(!fills.length)return '<div class="empty-state"><b>尚無已成交紀錄</b><small>未成交、取消與拒單不列入。</small></div>';
