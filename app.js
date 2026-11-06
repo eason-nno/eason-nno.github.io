@@ -740,7 +740,8 @@ async function pageTeam(params) {
     showSheet(`${smallIc(r.icon || "chat", 16)} ${esc(r.name)}<span class="mchip">${esc(r.team || "")}</span>`, `${st.score != null ? `<div class="chip-muted" style="margin-bottom:8px">多空分數 ${st.score}</div>` : ""}${st.finding ? `<div class="callout" style="margin:0 0 12px"><b>重點</b><span>${esc(st.finding)}</span></div>` : ""}${body}
       <p class="note">${run ? `${esc(baseOf(run.symbol))}・${fmtTime(run.created_at)}（台北）・模型 ${esc(st.model || run?.models?.[r.tier]?.used || "")}` : ""}</p>`);
   };
-  const card = (r) => `<div class="agent" id="ag-${r.key}" tabindex="0" role="button" aria-label="${esc(r.name)}：查看完整報告"><div class="ah"><span class="ai">${ICON[r.icon]}</span><span class="an">${esc(r.name)}</span></div><p>${esc(r.desc)}</p><div class="find" data-f hidden></div><div class="prev" data-p hidden></div><button class="more" data-more hidden>展開全文 ▾</button><div class="af"><span class="pill gray" data-st>等待中</span><span class="tier">${r.tier === "deep" ? "深度思考" : "快速思考"}</span><span class="mchip" data-m></span></div></div>`;
+  const debateUrl = key => "http://127.0.0.1:8800/debate?"+new URLSearchParams({role:key,report:run?.id||""});
+  const card = (r) => `<div class="agent" id="ag-${r.key}" tabindex="0" role="button" aria-label="${esc(r.name)}：查看完整報告"><div class="ah"><span class="ai">${ICON[r.icon]}</span><span class="an">${esc(r.name)}</span></div><p>${esc(r.desc)}</p><div class="find" data-f hidden></div><div class="prev" data-p hidden></div><button class="more" data-more hidden>展開全文 ▾</button><div class="af"><span class="pill gray" data-st>等待中</span><span class="tier">${r.tier === "deep" ? "深度思考" : "快速思考"}</span><span class="mchip" data-m></span></div><a data-debate target="_blank" rel="noopener noreferrer" href="${esc(debateUrl(r.key))}">與他辯論 ↗（本機）</a></div>`;
   const col = (n) => ROLES.filter((r) => r.col === n).map(card).join("");
   $("#app").innerHTML = `
   ${noteHTML()}
@@ -767,6 +768,8 @@ async function pageTeam(params) {
   const stepCard = $("#stepper").closest("section"), progressCard = $(".prog").closest("section");
   $("#app").prepend(stepCard, progressCard);
   const strategyCard = $("#ag-new-strategy");
+  strategyCard.insertAdjacentHTML("beforeend",`<a data-debate target="_blank" rel="noopener noreferrer" href="${esc(debateUrl("strategy"))}">與他辯論 ↗（本機）</a>`);
+  document.querySelectorAll("[data-debate]").forEach(el=>{ el.onclick=e=>e.stopPropagation(); el.onkeydown=e=>e.stopPropagation(); });
   strategyCard.onclick = () => showSheet("策略測試經理", strategyManagerHTML(newPaper));
   strategyCard.onkeydown = e => { if(e.key === "Enter" || e.key === " ") { e.preventDefault(); strategyCard.click(); } };
   $("#team-sym").onchange = (e) => { location.hash = `#/team?symbol=${e.target.value}`; };
