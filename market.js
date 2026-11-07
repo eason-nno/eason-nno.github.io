@@ -228,6 +228,11 @@ function bnSocket(name, urls, streams, onData, status, emitStatus) {
     ws.onerror = () => { try { ws.close(); } catch (e) {} };
   };
   const retry = () => { setTimeout(open, backoff); backoff = Math.min(backoff * 2, 60000); };
+  st.subscribe = (next) => {
+    const added = next.filter(stream => !streams.includes(stream));
+    streams.push(...added);
+    if (added.length) st.send({ method: "SUBSCRIBE", params: added, id: Date.now() });
+  };
   st.send = (obj) => { try { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); } catch (e) {} };
   open();
   return st;
@@ -237,7 +242,7 @@ if (typeof window !== "undefined") {
   window.MK = {
     cfg: MK_DEFAULT_CFG, bars: {}, ind: {}, tickers: {}, quotes: {}, marks: {}, signals: new Map(), categories: { updated_at: null, items: [] }, sentiment: null,
     status: { ws_connected: false, last_msg_at: null, reconnects: 0, messages: 0, started_at: new Date().toISOString(), rest_base: MK_REST, ws_base: BN_WS_MARKET[0], rest_tested: {}, quote: null, kline: null, source: "Binance USDⓈ-M 永續合約（USDC 本位）", data_error: null },
-    listeners: [], ready: null, lastChecked: {}, heatInst: [],
+    listeners: [], lastChecked: {}, heatInst: [], history: new Map(), requested: new Map(),
     sigTfs() { return [...new Set(this.cfg.signal_timeframes.concat(MK_BIAS_TFS))]; }, // 多空分歧需要 15分/1H/4H 的訊號
     emit(ev, d) { this.listeners.forEach((fn) => fn(ev, d)); },
     async rest(path) {
@@ -257,7 +262,9 @@ if (typeof window !== "undefined") {
     async backfill(sym, tf, limit = 500) {
       const rows = (await this.rest(`/fapi/v1/klines?symbol=${sym}&interval=${BN_INT[tf]}&limit=${Math.min(1500, limit)}`)).map((r) => bnBar(r, Date.now()));
       const key = sym + "|" + tf;
-      this.bars[key] = bnMergeBars(this.bars[key] || [], rows).slice(-600);
+      const existing = this.bars[key] || [];
+      const newest = existing.at(-1);
+      this.bars[key] = bnMergeBars(existing, newest && !newest.closed ? [...rows, newest] : rows).slice(-600);
       this.recalc(sym, tf);
     },
     recalc(sym, tf) { this.ind[sym + "|" + tf] = computeIndicators(this.bars[sym + "|" + tf] || [], this.cfg); return this.ind[sym + "|" + tf]; },
@@ -299,18 +306,45 @@ if (typeof window !== "undefined") {
         if (hist.length) this.sentiment = { ...hist[0], history: hist, source: "alternative.me Fear & Greed Index" };
       } catch (e) { /* 改用後台快照 */ }
     },
-    async start(cfg) {
+    configure(cfg) {
       if (cfg) this.cfg = { ...cfg, watchlist: [...new Set((cfg.watchlist || MK_DEFAULT_CFG.watchlist).map(bnCanon))] };
-      const heat = this.loadHeat().catch((e) => { console.warn("heat", e); return []; });
-      this.ready = (async () => {
-        await Promise.all(this.cfg.watchlist.flatMap((s) => MK_TFS.map((tf) => this.backfill(s, tf).then(() => { if (this.sigTfs().includes(tf)) this.scan(s, tf, "history"); }).catch((e) => console.warn("backfill", s, tf, e)))));
-      })();
-      this.refreshSentiment();
-      await heat;
+    },
+    start() {
+      if (this.started) return;
+      this.started = true;
       this.connectQuotes();
-      await this.ready;
-      this.connectCandles();
+      this.loadHeat().then(() => {
+        const symbols = this.heatInst.filter(sym => !this.cfg.watchlist.includes(sym));
+        if (symbols.length) this.qst.subscribe(symbols.map(sym => sym.toLowerCase() + "@ticker"));
+      }).catch(() => {});
+      this.refreshSentiment();
       setInterval(() => this.refreshSentiment(), 600000);
+    },
+    ensureBars(sym, tf) {
+      if (!Object.hasOwn(BN_INT, tf)) return Promise.resolve();
+      const key = sym + "|" + tf;
+      const existing = this.history.get(key);
+      if (existing) return existing;
+      this.requested.set(key, [sym, tf]);
+      if (!this.candleStream) this.connectCandles();
+      else this.candleStream.subscribe([sym.toLowerCase() + "@kline_" + BN_INT[tf]]);
+      const request = this.backfill(sym, tf).then(() => {
+        if (this.sigTfs().includes(tf)) this.scan(sym, tf, "history");
+      }).catch(() => { this.history.delete(key); });
+      this.history.set(key, request);
+      return request;
+    },
+    async warmHistory(symbols = this.cfg.watchlist, frames = MK_TFS) {
+      const tasks = symbols.flatMap(sym => frames.map(tf => [sym, tf]));
+      const load = async () => {
+        for (;;) {
+          const next = tasks.shift();
+          if (!next) return;
+          await this.ensureBars(...next);
+        }
+      };
+      await Promise.all([load(), load(), load()]);
+      if (symbols === this.cfg.watchlist && frames === MK_TFS) this.historyReady = this.history.size >= symbols.length * frames.length;
     },
     emitStatus() {
       const q = this.status.quote || {}, k = this.status.kline || {};
@@ -342,11 +376,12 @@ if (typeof window !== "undefined") {
       this.qst = st;
     },
     connectCandles() {
-      const streams = this.cfg.watchlist.flatMap((s) => MK_TFS.map((tf) => `${s.toLowerCase()}@kline_${BN_INT[tf]}`));
+      const streams = [...this.requested.values()].map(([s, tf]) => `${s.toLowerCase()}@kline_${BN_INT[tf]}`);
       const st = bnSocket("kline", BN_WS_MARKET, streams, (stream, d) => {
         if (d.e !== "kline") return; const tf = BN_INT_REV[d.k.i]; if (!tf) return;
         this.onCandle(d.s, tf, bnWsBar(d.k));
       }, this.status, () => this.emitStatus());
+      this.candleStream = st;
       st.onReconnect = () => this.resync();
     },
     onCandle(sym, tf, bar) {
@@ -359,8 +394,8 @@ if (typeof window !== "undefined") {
       if (bar.closed && this.sigTfs().includes(tf)) this.scan(sym, tf, "live", this.lastChecked[key] ?? bar.t - 1).forEach((x) => this.emit("signal", x));
     },
     async resync() {
-      for (const s of this.cfg.watchlist) for (const tf of MK_TFS) {
-        try { await this.backfill(s, tf, 300); if (this.sigTfs().includes(tf)) this.scan(s, tf, "recovered", this.lastChecked[s + "|" + tf]).forEach((x) => this.emit("signal", x)); } catch (e) {}
+      for (const [s, tf] of this.requested.values()) {
+        try { await this.backfill(s, tf, 300); this.emit("history", { symbol: s, tf }); if (this.sigTfs().includes(tf)) this.scan(s, tf, "recovered", this.lastChecked[s + "|" + tf]).forEach((x) => this.emit("signal", x)); } catch (e) {}
       }
     },
     klines(sym, tf, limit) { return { symbol: sym, tf, source: "Binance " + sym, bars: (this.ind[sym + "|" + tf] || []).slice(-Math.max(30, Math.min(limit || 300, 600))).map(publicBar) }; },

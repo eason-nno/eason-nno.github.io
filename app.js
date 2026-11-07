@@ -6,7 +6,56 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 /* 靜態資料（後台每次分析完推送）＋瀏覽器即時行情，模擬原本的 /api 介面 */
-const DATA = { cache: {}, published: null };
+const DATA = { cache: {}, pending: new Map(), revisions: {}, fileTimes: {}, live: {}, published: null };
+const PUBLIC_RELAY = "https://easonagents-share.pages.dev/api/remote/site";
+const usesRelay = location.origin === "https://eason-nno.github.io";
+
+function patchHTML(root, html, preserve = "") {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const key = node => node.nodeType === 1 && (node.id || node.dataset.syncKey);
+  function patch(parent, source) {
+    const keyed = new Map(Array.from(parent.childNodes).filter(key).map(node => [key(node), node]));
+    let cursor = parent.firstChild;
+    for (const desired of source.childNodes) {
+      const node = key(desired) ? keyed.get(key(desired)) : cursor;
+      if (!node || node.nodeName !== desired.nodeName || node.namespaceURI !== desired.namespaceURI || key(node) !== key(desired)) {
+        parent.insertBefore(desired.cloneNode(true), cursor);
+        continue;
+      }
+      if (node !== cursor) parent.insertBefore(node, cursor);
+      cursor = node.nextSibling;
+      if (node.nodeType === 3) { if (node.data !== desired.data) node.data = desired.data; continue; }
+      if (node.nodeType !== 1 || (preserve && node.matches(preserve))) continue;
+      for (const { name } of Array.from(node.attributes)) {
+        if (!(name === "open" && node.localName === "details") && !desired.hasAttribute(name)) node.removeAttribute(name);
+      }
+      for (const { name, value } of desired.attributes) {
+        if (node.getAttribute(name) !== value) node.setAttribute(name, value);
+      }
+      patch(node, desired);
+    }
+    while (cursor) { const next = cursor.nextSibling; cursor.remove(); cursor = next; }
+  }
+  patch(root, template.content);
+}
+
+function onData(files, render) {
+  let active = true, pending = false, running = false;
+  pageCleanup.push(() => { active = false; });
+  on("data_updated", async (changed) => {
+    if (!files.some(name => changed.has(name))) return;
+    pending = true;
+    if (running) return;
+    running = true;
+    try {
+      while (active && pending) {
+        pending = false;
+        try { await render(() => active); } catch (error) { console.warn("資料更新失敗", error); }
+      }
+    } finally { running = false; }
+  });
+}
 function freshStatus(st, now = Date.now()) {
   const published = Date.parse(st.published_at || "");
   if (st.busy && (!Number.isFinite(published) || now - published > 10 * 60000)) {
@@ -19,10 +68,26 @@ function displayRun(run, st) {
     ? { ...run, status: "sync_stale" } : run;
 }
 async function J(name, maxAge = 30000) {
-  const c = DATA.cache[name]; if (c && Date.now() - c.t < maxAge) return name === "status.json" ? freshStatus(c.v) : c.v;
-  const r = await fetch(`data/${name}?v=${Date.now()}`, { cache: "no-store" });
-  if (!r.ok) throw new Error(r.status === 404 ? "找不到這筆資料（可能尚未推送）" : `HTTP ${r.status}`);
-  const v = await r.json(); DATA.cache[name] = { t: Date.now(), v }; return name === "status.json" ? freshStatus(v) : v;
+  const version = DATA.revisions[name];
+  const c = DATA.cache[name];
+  if (c && (version ? c.version === version : Date.now() - c.t < maxAge)) {
+    return name === "status.json" ? freshStatus(c.v) : c.v;
+  }
+  const key = name + "|" + (version || "");
+  if (!DATA.pending.has(key)) DATA.pending.set(key, (async () => {
+    const live = DATA.live[name];
+    let r;
+    if (live && live.rev === version) {
+      try { r = await fetch(PUBLIC_RELAY + "/" + name + "?rev=" + version, { signal: AbortSignal.timeout(4000) }); } catch {}
+    }
+    if (!r?.ok && c && live) return c.v;
+    if (!r?.ok) r = await fetch("data/" + name + "?v=" + (version || Date.now()), { cache: version ? "default" : "no-store" });
+    if (!r.ok) throw new Error(r.status === 404 ? "資料尚未同步，請稍後再試" : "HTTP " + r.status);
+    const v = await r.json();
+    if (DATA.revisions[name] === version && (!live || r.url.startsWith(PUBLIC_RELAY))) DATA.cache[name] = { t: Date.now(), version, v };
+    return name === "status.json" ? freshStatus(v) : v;
+  })().finally(() => DATA.pending.delete(key)));
+  return DATA.pending.get(key);
 }
 const tpeDate = (x) => new Date(new Date(x).getTime() + 8 * 3600000).toISOString().slice(0, 10);
 function nextRunTime(s, after = Date.now()) {
@@ -38,7 +103,7 @@ const coinKey = (s) => (s ? String(s).toUpperCase().replace(/(USDT|USDC|FDUSD|BU
 const sameCoin = (a, b) => !!a && !!b && coinKey(a) === coinKey(b);
 const unitOf = (sym) => (/USDT$/.test(sym || "") ? "USDT" : "USDC");
 async function aiState() {
-  const [rawRuns, st] = await Promise.all([J("runs.json"), J("status.json")]);
+  const [rawRuns, st] = await Promise.all([J("recent.json").catch(() => J("runs.json")), J("status.json")]);
   const runs = rawRuns.map(r => displayRun(r, st));
   const latest = (sym) => runs.find((r) => sameCoin(r.symbol, sym) && r.status === "done") || null;
   const status = (sym) => (st.busy && sameCoin(st.current?.symbol, sym) ? "running" : latest(sym) ? "done" : "not_run");
@@ -47,7 +112,7 @@ async function aiState() {
 const api = async (p) => {
   const [path, qs] = p.split("?"); const q = new URLSearchParams(qs || ""); let m;
   if (path === "/api/crypto/overview") {
-    await MK.ready; const A = await aiState(); const mkt = await J("market.json").catch(() => ({}));
+    const [A, mkt] = await Promise.all([aiState(), J("market.json").catch(() => ({}))]);
     const items = MK.cfg.watchlist.map((s) => ({ ...MK.summary(s), ai: A.latest(s), ai_status: A.status(s), sentiment: MK.sentiment || mkt.sentiment }));
     const today = tpeDate(Date.now());
     return { items, kpi: { tracked: items.length, ai_done_today: A.runs.filter((r) => r.status === "done" && tpeDate(r.created_at) === today).length, ai_running: A.st.busy ? 1 : 0,
@@ -55,14 +120,14 @@ const api = async (p) => {
       ai_live: (A.st.busy || A.st.stale) ? A.st.current : null, categories: MK.categories.items.length ? MK.categories : mkt.categories || MK.categories, sentiment: MK.sentiment || mkt.sentiment };
   }
   if ((m = path.match(/^\/api\/crypto\/symbol\/(\w+)$/))) {
-    await MK.ready; const A = await aiState(); const mkt = await J("market.json").catch(() => ({})); const s = coinKey(m[1]);
+    const [A, mkt] = await Promise.all([aiState(), J("market.json").catch(() => ({}))]); const s = coinKey(m[1]);
     if (!MK.cfg.watchlist.includes(s)) throw new Error("這個幣種不在追蹤清單");
     return { ...MK.summary(s), ai: A.latest(s), ai_status: A.status(s), sentiment: MK.sentiment || mkt.sentiment,
       ai_live: (A.st.busy || A.st.stale) && sameCoin(A.st.current?.symbol, s) ? A.st.current : null, ai_last: A.runs.find((r) => sameCoin(r.symbol, s)) || null };
   }
-  if ((m = path.match(/^\/api\/crypto\/klines\/(\w+)$/))) { await MK.ready; return MK.klines(coinKey(m[1]), q.get("tf") || "4h", +(q.get("limit") || 300)); }
-  if (path === "/api/crypto/signals") { await MK.ready; return MK.signalList({ symbol: q.get("symbol"), tf: q.get("tf"), limit: +(q.get("limit") || 60) }); }
-  if (path === "/api/crypto/ai/runs") { const st = await J("status.json"); const runs = (await J("runs.json")).map(r => displayRun(r,st)); const sy = q.get("symbol"); return runs.filter((r) => !sy || sameCoin(r.symbol, sy)).slice(0, +(q.get("limit") || 50)); }
+  if ((m = path.match(/^\/api\/crypto\/klines\/(\w+)$/))) { const sym = coinKey(m[1]), tf = q.get("tf") || "4h"; await MK.ensureBars(sym, tf); return MK.klines(sym, tf, +(q.get("limit") || 300)); }
+  if (path === "/api/crypto/signals") { return MK.signalList({ symbol: q.get("symbol"), tf: q.get("tf"), limit: +(q.get("limit") || 60) }); }
+  if (path === "/api/crypto/ai/runs") { const st = await J("status.json"); const runs = (await (q.has("recent") ? J("recent.json").catch(() => J("runs.json")) : J("runs.json"))).map(r => displayRun(r,st)); const sy = q.get("symbol"); return runs.filter((r) => !sy || sameCoin(r.symbol, sy)).slice(0, +(q.get("limit") || 50)); }
   if ((m = path.match(/^\/api\/crypto\/ai\/runs\/([\w-]+)$/))) return J(`runs/${m[1]}.json`, 600000);
   if (path === "/api/crypto/ai/live") { const st = await J("status.json"); return { busy: !!st.busy, current: st.current || null }; }
   if (path === "/api/crypto/ai/settings") { const s = await J("settings.json"); return { ...s, next_run: nextRunTime(s.settings) }; }
@@ -183,27 +248,72 @@ function connectLive() {
     else if (ev === "signal") { if (d.source === "live") toastSignal(d); emit("signal", d); }
     else if (ev === "status") { live.status = d; updateLivePill(); }
     else if (ev === "categories") emit("categories", d);
-    else if (ev === "mark") emit("mark", d);
+    else if (ev === "mark" || ev === "history") emit(ev, d);
   });
   live.status = MK.status;
 }
-/* 每分鐘檢查後台是否推送了新結果 */
+function applyStatus(raw, revisions = raw.sections || {}) {
+  const st = freshStatus(raw), changed = new Set();
+  for (const [name, rev] of Object.entries(revisions)) {
+    if (DATA.revisions[name] !== rev || (DATA.live[name] && DATA.cache[name]?.version !== rev)) {
+      DATA.revisions[name] = rev; changed.add(name);
+    }
+  }
+  if (st.published_at !== DATA.published || !!st.stale !== !!DATA.stale) changed.add("status.json");
+  if (!Object.keys(revisions).length && DATA.published && changed.size) {
+    for (const name of ["runs.json", "recent.json", "market.json", "settings.json", "paper.json", "new-paper.json", "ai-usage.json"]) {
+      if (!DATA.live[name]) { delete DATA.cache[name]; changed.add(name); }
+    }
+  }
+  DATA.stale = !!st.stale; DATA.published = st.published_at;
+  DATA.cache["status.json"] = { t: Date.now(), version: DATA.revisions["status.json"], v: raw };
+  const revision = $('meta[name="eason-frontend"]')?.content;
+  const notice = $("#frontend-update");
+  if (notice) notice.hidden = !st.frontend_revision || !revision || revision === st.frontend_revision;
+  const pe = $("#pub-time"); if (pe) pe.textContent = fmtTime(st.published_at);
+  const hb = $("#host-hb"); if (hb) hb.innerHTML = hostBeat(st);
+  if (changed.size) emit("data_updated", changed);
+}
+
 async function pollData() {
   try {
-    const r = await fetch(`data/status.json?v=${Date.now()}`, { cache: "no-store" }); if (!r.ok) return;
-    const st = freshStatus(await r.json());
-    const rev=document.querySelector('meta[name="eason-frontend"]')?.content;
-    if(st.frontend_revision && rev && rev!==st.frontend_revision){const url=new URL(location.href);url.searchParams.set("ui_revision",st.frontend_revision);location.replace(url.href);return;}
-    if (DATA.published && (st.published_at !== DATA.published || !!st.stale !== !!DATA.stale)) {
-      DATA.cache = {}; DATA.cache["status.json"] = { t: Date.now(), v: st };
-      const lr = (await J("runs.json"))[0];
-      if (lr && lr.status === "done") toast(`<b>${esc(baseOf(lr.symbol))} AI 結果已更新</b>最終決策：${esc(DIRS[lr.decision]?.t || lr.decision)}（信心 ${lr.confidence}）`, lr.decision === "LONG" ? "bull" : lr.decision === "SHORT" ? "bear" : "");
-      else if (st.busy) toast(`<b>${esc(baseOf(st.current.symbol))} AI 分析進行中</b>完成後會自動更新`);
-      emit("data_updated", st);
+    const r = await fetch("data/status.json?v=" + Date.now(), { cache: "no-store", signal: AbortSignal.timeout(7000) });
+    if (!r.ok) return;
+    const st = await r.json();
+    if (Date.parse(st.published_at) >= (Date.parse(DATA.published) || 0)) {
+      for (const [name, rev] of Object.entries(st.sections || {})) {
+        if (DATA.live[name]?.rev === rev || Date.parse(st.published_at) > Date.parse(DATA.live[name]?.at)) delete DATA.live[name];
+        DATA.fileTimes[name] = Date.parse(st.published_at);
+      }
+      applyStatus(st);
+    } else if (DATA.cache["status.json"] && !!freshStatus(DATA.cache["status.json"].v).stale !== !!DATA.stale) {
+      applyStatus(DATA.cache["status.json"].v, {});
     }
-    DATA.stale = !!st.stale; DATA.published = st.published_at; DATA.cache["status.json"] = { t: Date.now(), v: st };
-    const pe = $("#pub-time"); if (pe) pe.textContent = fmtTime(st.published_at); const hb = $("#host-hb"); if (hb) hb.innerHTML = hostBeat(st);
-  } catch (e) { /* 離線時略過 */ }
+  } catch { /* 連線失敗時保留已顯示的資料 */ }
+}
+
+async function pollRelay() {
+  if (!document.hidden) {
+    try {
+      const r = await fetch(PUBLIC_RELAY, { signal: AbortSignal.timeout(4000) });
+      if (r.ok) {
+        const { status, files } = await r.json();
+        const at = Date.parse(status?.published_at);
+        if (Number.isFinite(at) && at >= (Date.parse(DATA.published) || 0)) {
+          const revisions = {};
+          for (const [name, version] of Object.entries(files)) {
+            const fileTime = Date.parse(version.at || status.published_at);
+            if (!/^[a-f0-9]{16}$/.test(version.rev) || fileTime < (DATA.fileTimes[name] || 0)) continue;
+            DATA.fileTimes[name] = fileTime;
+            revisions[name] = version.rev;
+            if (DATA.revisions[name] !== version.rev || !DATA.cache[name]) DATA.live[name] = version;
+          }
+          applyStatus(status, revisions);
+        }
+      }
+    } catch { /* GitHub Pages 仍可提供資料 */ }
+  }
+  setTimeout(pollRelay, 8000);
 }
 function quoteStatusText(q) {
   q = q || {};
@@ -397,9 +507,11 @@ function volumeTreemap(items,width,height){
 }
 
 async function pageOverview() {
+  const view = location.hash;
   setTitle("市場總覽", "即時資料・Binance USDC 永續");
   const app = $("#app");
   const [d, sigs] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/signals?limit=50")]);
+  if (view !== location.hash) return;
   WATCH = d.items.map((i) => i.symbol);
   d.items.forEach((i) => { if (i.ticker) live.tickers[i.symbol] = { ...i.ticker, ...(live.tickers[i.symbol] || {}) }; });
   if (!ovSel || !WATCH.includes(ovSel)) ovSel = WATCH[0];
@@ -413,7 +525,7 @@ async function pageOverview() {
           <div class="kpi">${ICON.target}<div><small>追蹤標的</small><b class="num">${d.kpi.tracked}</b></div></div>
           <div class="kpi">${ICON.check}<div><small>今日完成（AI）</small><b class="num">${d.kpi.ai_done_today}</b></div></div>
           <div class="kpi">${ICON.bars}<div><small>分析中</small><b class="num">${d.kpi.ai_running}</b></div></div>
-          <div class="kpi">${ICON.bolt}<div><small>24h 訊號</small><b class="num" id="kpi-sig">${d.kpi.signals_24h}</b></div></div>
+          <div class="kpi">${ICON.bolt}<div><small>24h 訊號</small><b class="num" id="kpi-sig">${MK.historyReady ? d.kpi.signals_24h : "—"}</b></div></div>
         </div></div>
       <div style="display:flex;align-items:center;justify-content:space-between">
         <div class="tabs" id="ov-tabs">${[["all", "全部"], ["bull", "技術偏多"], ["bear", "技術偏空"]].map(([k, t]) => `<button class="tab ${ovFilter === k ? "active" : ""}" data-f="${k}">${t}</button>`).join("")}</div>
@@ -488,7 +600,8 @@ async function pageOverview() {
   const heatResize=new ResizeObserver(()=>{if(heatFrame===null)heatFrame=requestAnimationFrame(drawHeat)});heatResize.observe($("#heat"));
   pageCleanup.push(()=>{heatResize.disconnect();if(heatFrame!==null)cancelAnimationFrame(heatFrame)});
 
-  let aiRuns = await api("/api/crypto/ai/runs?limit=20").catch(() => []);
+  let aiRuns = (await aiState().catch(() => ({runs:[]}))).runs.slice(0,20);
+  if (view !== location.hash) return;
   const aiLive = (d.ai_live?.messages || []).map((m) => ({ ...m, symbol: d.ai_live.symbol }));
   const renderFeed = () => {
     const liveMsgs = aiLive.slice(-30).reverse().map((m) => `<div class="sig"><div class="sig-ic ${m.key === "bull" ? "bull" : m.key === "bear" ? "bear" : ""}">${ICON[ROLE[m.key]?.icon || "chat"]}</div><div class="sig-b"><div class="sig-t"><b>${esc(baseOf(m.symbol || ""))}・${esc(ROLE[m.key]?.name || m.key)}</b><span class="tf-tag">分析中</span><time>${fmtTime(m.time)}</time></div><div class="sig-d">${esc(m.finding || (m.text || "").replace(/[*#|]/g, "").slice(0, 90))}</div></div></div>`).join("");
@@ -537,12 +650,14 @@ async function pageOverview() {
     }
   });
   { const iv = setInterval(() => renderRsi(), 30000); pageCleanup.push(() => clearInterval(iv)); } // K 線指標變化時更新多週期判斷
-  on("signal", (s) => { renderRsi(); renderDiv(); const el = $("#kpi-sig"); if (el) el.textContent = +el.textContent + 1; });
+  on("signal", (s) => { renderRsi(); renderDiv(); const el = $("#kpi-sig"); if (el && MK.historyReady) el.textContent = +el.textContent + 1; });
   on("categories", renderHeat);
   on("ai_message", (m) => { aiLive.push(m); renderFeed(); });
-  const refreshAI = async () => { aiRuns = await api("/api/crypto/ai/runs?limit=20").catch(() => aiRuns); aiLive.length = 0;
-    const nd = await api("/api/crypto/overview"); nd.items.forEach((i) => { items[i.symbol] = i; const o = d.items.findIndex((x) => x.symbol === i.symbol); if (o >= 0) d.items[o] = i; }); renderRows(); renderDiv(); renderFeed(); };
-  on("data_updated", refreshAI);
+  const refreshAI = async (active) => { const [runs, nd] = await Promise.all([api("/api/crypto/ai/runs?limit=20&recent=1").catch(() => aiRuns), api("/api/crypto/overview")]);
+    if (!active()) return; aiRuns = runs; aiLive.length = 0; nd.items.forEach((i) => { items[i.symbol] = i; const o = d.items.findIndex((x) => x.symbol === i.symbol); if (o >= 0) d.items[o] = i; }); $("#kpi-sig").textContent = MK.historyReady ? nd.kpi.signals_24h : "—"; renderRows(); renderDiv(); renderFeed(); };
+  onData(["status.json", "recent.json", "runs.json", "market.json"], refreshAI);
+  const overview = $("#ov-rows");
+  MK.warmHistory().then(() => refreshAI(() => overview.isConnected)).catch(() => {});
   const iv = setInterval(async () => { // 每分鐘重算技術狀態
     try { const nd = await api("/api/crypto/overview"); nd.items.forEach((i) => { items[i.symbol] = i; const o = d.items.findIndex((x) => x.symbol === i.symbol); if (o >= 0) d.items[o] = i; }); renderRows(); renderDiv(); } catch (e) { /* ignore */ }
   }, 60000);
@@ -552,12 +667,15 @@ async function pageOverview() {
 /* 幣種研究 */
 const chartPrefs = Object.assign({ ma: true, bb: false, vol: true, sub: "rsi", type: "candle" }, JSON.parse(localStorage.getItem("chartPrefs") || "{}"));
 async function pageCoin(sym, params) {
+  const view = location.hash;
   sym = coinKey(sym);
   if (!WATCH.includes(sym)) { try { WATCH = (await api("/api/crypto/overview")).items.map((i) => i.symbol); } catch (e) {} }
   if (!WATCH.includes(sym)) { $("#app").innerHTML = `<div class="card"><div class="empty-state"><b>${esc(sym)} 不在追蹤清單</b><small>公開版只提供 BTC、ETH、ZEC。</small><a class="btn mint" href="#/">回到總覽</a></div></div>`; return; }
   lastCoin = sym; localStorage.setItem("lastCoin", sym); renderNav("coin");
-  let tf = params.get("tf") || "4h";
-  const s = await api(`/api/crypto/symbol/${sym}`);
+  let tf = Object.hasOwn(TF_LABEL, params.get("tf")) ? params.get("tf") : "4h";
+  const initialBars = MK.ensureBars(sym, tf);
+  let s = await api(`/api/crypto/symbol/${sym}`);
+  if (view !== location.hash) return;
   const base = s.base;
   setTitle("幣種研究", "即時資料・Binance USDC 永續");
   const stars = JSON.parse(localStorage.getItem("stars") || "[]");
@@ -565,7 +683,7 @@ async function pageCoin(sym, params) {
   const fgSeg = fg ? Math.max(1, Math.min(5, Math.ceil(fg.value / 20))) : 0;
   const fgCls = !fg ? "" : fg.value < 45 ? "down" : fg.value > 55 ? "up" : "warn";
   const rk = s.risk;
-  $("#app").innerHTML = `
+  const layout = () => `
   <div class="det-head">${coinIcon(base, 38)}<select class="coin-select sym" id="coin-symbol" aria-label="選擇研究幣種">${WATCH.map(s => `<option value="${esc(s)}" ${s === sym ? "selected" : ""}>${esc(baseOf(s))}</option>`).join("")}</select><button class="star ${stars.includes(sym) ? "on" : ""}" id="star" title="加入關注">${stars.includes(sym) ? "★" : "☆"}</button>
     <span class="nm">${esc(s.name)}・${esc(sym)}</span>${s.ai_status === "running" ? `<span class="pill run">● AI 分析中</span>` : s.ai ? `<span class="pill ${DIRS[s.ai.decision].pill}">AI：${DIRS[s.ai.decision].t}・${esc(fmtTime(s.ai.created_at))}</span>` : `<span class="pill gray">${smallIc("hourglass", 13)}尚未執行 AI 分析</span>`}
     <span class="pill done">● 即時行情</span></div>
@@ -598,7 +716,7 @@ async function pageCoin(sym, params) {
       <div class="legend num" id="sub-legend" style="margin-top:4px"></div>
       <div class="chart-box" id="sub-chart"></div>
     </section>
-    <section class="card">
+    <section class="card" id="coin-verdict">
       <div class="card-h"><h2>${ICON.spark}AI 綜合觀點</h2><div class="right">${s.ai ? `<a class="btn sm" href="#/report/${encodeURIComponent(s.ai.id)}">完整報告</a>${s.ai.pdf_url ? `<a class="btn sm" target="_blank" href="${esc(s.ai.pdf_url)}">PDF</a>` : ""}` : `<span class="chip-muted">尚未分析</span>`}</div></div>
       ${verdictHTML(s.ai, `<div class="v-side"><small>持有期間</small><b>${holdTxt(s.ai?.settings?.holding_period_days ?? s.ai?.result?.settings?.holding_period_days ?? 1)}</b><small>研究評等 ${esc(s.ai?.result?.research_rating || "—")}</small></div>`)}
       <div class="sub-h" style="color:var(--ink);font-size:14px;font-weight:700">綜合理由</div>
@@ -613,12 +731,17 @@ async function pageCoin(sym, params) {
     <section class="card"><div class="card-h"><div class="tabs" id="na-tabs"><button class="tab outline active" data-t="news">新聞重點</button><button class="tab outline" data-t="agents">AI 代理活動</button></div></div><div id="na-body"></div></section>
   </div>`;
 
+  $("#app").innerHTML = layout();
+  const coinView = $("#main-chart");
   $("#star").onclick = () => { const st = JSON.parse(localStorage.getItem("stars") || "[]"); const i = st.indexOf(sym); i >= 0 ? st.splice(i, 1) : st.push(sym); localStorage.setItem("stars", JSON.stringify(st)); $("#star").classList.toggle("on", i < 0); $("#star").textContent = i < 0 ? "★" : "☆"; };
+  const renderFactors = () => {
   const ck = s.dims["4h"]?.checks || [];
   const dec = s.ai?.result?.decision;
   $("#f-bull").innerHTML = (dec ? dec.bull_factors.map((x) => `<li>${esc(x)}</li>`) : ck.filter((c) => c.bull).map((c) => `<li>${esc(c.name)}</li>`)).join("") || `<li class="muted">目前無</li>`;
   $("#f-bear").innerHTML = (dec ? dec.bear_factors.map((x) => `<li>${esc(x)}</li>`) : ck.filter((c) => !c.bull).map((c) => `<li>${esc(c.name.replace(">", "≤"))}</li>`)).join("") || `<li class="muted">目前無</li>`;
 
+  };
+  renderFactors();
   $("#coin-symbol").onchange = e => { location.hash = `#/coin/${e.target.value}?tf=${encodeURIComponent(tf)}`; };
   const renderMkt = () => {
     const t = live.tickers[sym] || s.ticker || {};
@@ -634,7 +757,7 @@ async function pageCoin(sym, params) {
   };
   let dv = null;
   renderMkt();
-  api(`/api/crypto/ai/derivs/${sym}`).then((x) => { dv = x; if ($("#mkt")) renderMkt(); }).catch(() => {});
+  api(`/api/crypto/ai/derivs/${sym}`).then((x) => { dv = x; if (coinView.isConnected) renderMkt(); }).catch(() => {});
   const renderPx = (t) => {
     if (!t) return;
     $("#k-px").textContent = fmtPrice(t.last);
@@ -653,13 +776,13 @@ async function pageCoin(sym, params) {
       : `<div class="agents-list" style="max-height:270px;overflow:auto">${ROLES.map((r) => `<div class="ag" title="${esc(fnd[r.key] || "")}"><i style="${fnd[r.key] ? "background:var(--mint)" : ""}"></i><span style="min-width:0;flex:1"><b>${esc(r.name)}</b><small class="muted" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(fnd[r.key] || "等待中")}</small></span>${fnd[r.key] ? `<span class="pill done">已完成</span>` : `<span class="pill gray">等待中</span>`}</div>`).join("")}</div>`;
   };
   renderNA("news");
-  api(`/api/crypto/ai/news/${sym}`).then((x) => { newsItems = x.items; if ($("#na-tabs .tab.active")?.dataset.t === "news") renderNA("news"); }).catch(() => { newsItems = []; });
+  api(`/api/crypto/ai/news/${sym}`).then((x) => { newsItems = x.items; if (coinView.isConnected && $("#na-tabs .tab.active")?.dataset.t === "news") renderNA("news"); }).catch(() => { newsItems = []; });
   $$("#na-tabs .tab").forEach((b) => b.onclick = () => { $$("#na-tabs .tab").forEach((x) => x.classList.toggle("active", x === b)); renderNA(b.dataset.t); });
 
   let sigTf = "";
   const loadSigs = async (newId) => {
     const rows = await api(`/api/crypto/signals?symbol=${sym}&limit=50${sigTf ? "&tf=" + sigTf : ""}`);
-    const el = $("#cfeed"); if (!el) return;
+    const el = $("#cfeed"); if (!coinView.isConnected || !el) return;
     el.innerHTML = rows.map((x) => sigHTML(x, x.id === newId)).join("") || `<div class="empty-state"><b>尚無訊號</b></div>`;
   };
   loadSigs();
@@ -713,8 +836,13 @@ async function pageCoin(sym, params) {
       : chartPrefs.sub === "macd" ? `<span style="color:#0ecb81">MACD ${b.macd != null ? b.macd.toFixed(3) : "—"}</span><span style="color:#f5b041">訊號 ${b.macd_signal != null ? b.macd_signal.toFixed(3) : "—"}</span><span class="${signCls(b.macd_hist)}">柱 ${b.macd_hist != null ? b.macd_hist.toFixed(3) : "—"}</span>` : "";
   };
   main.subscribeCrosshairMove((p) => { if (!p.time) { hovering = false; header(bars[bars.length - 1]); return; } hovering = true; header(byTime.get(p.time)); });
-  const loadTf = async () => {
-    const k = await api(`/api/crypto/klines/${sym}?tf=${tf}&limit=${tf === "1d" ? 365 : 300}`);
+  let chartTf;
+  const loadTf = async (keepRange = false) => {
+    const selected = tf;
+    const k = await api(`/api/crypto/klines/${sym}?tf=${selected}&limit=${selected === "1d" ? 365 : 300}`);
+    if (selected !== tf || !coinView.isConnected) return;
+    const visible = keepRange ? main.timeScale().getVisibleLogicalRange() : null;
+    chartTf = selected;
     bars = k.bars; byTime = new Map(bars.map((b) => [tt(b.t), b]));
     candle.setData(bars.map((b) => ({ time: tt(b.t), open: b.o, high: b.h, low: b.l, close: b.c })));
     closeLine.setData(lineData(bars, "c"));
@@ -722,14 +850,27 @@ async function pageCoin(sym, params) {
     bbU.setData(lineData(bars, "bb_up")); bbL.setData(lineData(bars, "bb_lo")); bbM.setData(lineData(bars, "bb_mid"));
     vol.setData(bars.map(volPt));
     rsiS.setData(lineData(bars, "rsi")); macdL.setData(lineData(bars, "macd")); macdS.setData(lineData(bars, "macd_signal")); macdH.setData(bars.map(histPt));
-    const n = bars.length; main.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 120), to: n + 3 });
+    const n = bars.length;
+    if (n) main.timeScale().setVisibleLogicalRange(visible || { from: Math.max(0, n - 120), to: n + 3 });
     header(bars[n - 1]);
   };
-  applyPrefs(); await loadTf();
-  if (s.ai && s.ai.decision !== "WAIT") {
-    const pl = (price, color, title) => price != null && candle.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title });
-    pl(s.ai.entry, "#0ecb81", "AI 進場"); pl(s.ai.stop, "#f6465d", "停損"); pl(s.ai.take_profit, "#0ecb81", "停利");
-  }
+  const priceLines = [];
+  const renderPriceLines = () => {
+    for (const line of priceLines.splice(0)) candle.removePriceLine(line);
+    if (!s.ai || s.ai.decision === "WAIT") return;
+    for (const [price, color, title] of [[s.ai.entry, "#0ecb81", "AI 進場"], [s.ai.stop, "#f6465d", "停損"], [s.ai.take_profit, "#0ecb81", "停利"]]) {
+      if (price != null) priceLines.push(candle.createPriceLine({ price, color, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title }));
+    }
+  };
+  applyPrefs();
+  const firstTf = tf;
+  void initialBars.then(() => { if (tf === firstTf && coinView.isConnected) return loadTf(); });
+  renderPriceLines();
+  void initialBars.then(() => MK.warmHistory([sym], MK.sigTfs())).then(() => {
+    if (!coinView.isConnected) return;
+    s = { ...s, ...MK.summary(sym) };
+    renderMkt(); renderFactors(); loadSigs();
+  });
   $$("#tf-tabs .tab").forEach((b) => b.onclick = async () => { tf = b.dataset.tf; $$("#tf-tabs .tab").forEach((x) => x.classList.toggle("active", x === b)); history.replaceState(null, "", `#/coin/${sym}?tf=${tf}`); await loadTf(); });
   const toggleMenu = (btn, menu) => { $(btn).onclick = (e) => { e.stopPropagation(); const m = $(menu); const h = m.hidden; $$(".dd-menu").forEach((x) => x.hidden = true); m.hidden = !h; }; $(menu).onclick = (e) => e.stopPropagation(); };
   toggleMenu("#dd-type", "#m-type"); toggleMenu("#dd-ind", "#m-ind");
@@ -741,7 +882,7 @@ async function pageCoin(sym, params) {
 
   on("ticker", (t) => { if (t.symbol === sym) { renderPx(live.tickers[sym]); renderMkt(); } });
   on("kline", (k) => {
-    if (k.symbol !== sym || k.tf !== tf) return;
+    if (k.symbol !== sym || k.tf !== tf || k.tf !== chartTf) return;
     const b = k.bar, last = bars[bars.length - 1];
     if (last && b.t < last.t) return;
     if (last && b.t === last.t) bars[bars.length - 1] = b; else bars.push(b);
@@ -753,34 +894,56 @@ async function pageCoin(sym, params) {
     macdH.update(histPt(b)); vol.update(volPt(b));
     if (!hovering) header(b);
   });
+  on("history", (k) => { if (k.symbol === sym && k.tf === tf) void loadTf(true); });
   on("signal", (x) => { if (x.symbol === sym && (!sigTf || sigTf === x.tf)) loadSigs(x.id); });
-  on("data_updated", () => route());
+  onData(["status.json", "recent.json", "runs.json", "market.json"], async (active) => {
+    const [next, derivs, news] = await Promise.all([
+      api(`/api/crypto/symbol/${sym}`),
+      api(`/api/crypto/ai/derivs/${sym}`).catch(() => dv),
+      api(`/api/crypto/ai/news/${sym}`).catch(() => null),
+    ]);
+    if (!active()) return;
+    const aiChanged = s.ai?.id !== next.ai?.id;
+    s = next; dv = derivs; if (news) newsItems = news.items;
+    const temp = document.createElement("template"); temp.innerHTML = layout();
+    for (const sel of [".det-head", "#coin-verdict"]) {
+      const target = $(sel), source = $(sel, temp.content);
+      if (target && source) patchHTML(target, source.innerHTML, "#coin-symbol,#star");
+    }
+    if (aiChanged) renderPriceLines();
+    renderMkt(); renderFactors(); renderNA($("#na-tabs .tab.active").dataset.t);
+  });
 }
 
 /* AI 團隊 */
 async function pageTeam(params) {
+  const view = location.hash;
   setTitle("AI 團隊研究室", "原版 12 位＋策略測試經理・獨立分工");
-  const [ov, lv, aset, newPaper] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/ai/live"), api("/api/crypto/ai/settings"), J("new-paper.json").catch(() => null)]);
+  let [ov, lv, aset, newPaper] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/ai/live"), api("/api/crypto/ai/settings"), J("new-paper.json").catch(() => null)]);
   WATCH = ov.items.map((i) => i.symbol);
   let sym = coinKey(params.get("symbol") || (lv.busy ? lv.current.symbol : lastCoin));
   if (!WATCH.includes(sym)) sym = WATCH[0];
-  const A = aset.settings;
+  let A = aset.settings;
   const steps = [["資料分析", ["market", "sentiment", "news", "onchain"]], ["多空辯論", ["bull", "bear", "manager"]], ["交易評估", ["trader"]], ["風險審核", ["aggressive", "conservative", "neutral", "pm"]]];
   // 狀態：進行中的 run 或最近一次完成的 run
   let run = null, roles = {}, msgs = [], isLive = false;
-  const loadState = async () => {
+  const loadState = async (active = () => true) => {
     const l = await api("/api/crypto/ai/live");
+    if (!active()) return;
     if ((l.busy || ["paused","sync_stale"].includes(l.current?.status)) && l.current.symbol === sym) { isLive = !!l.busy; run = l.current; roles = l.current.roles; msgs = l.current.messages.slice(); return; }
     isLive = false;
     const rs = await api(`/api/crypto/ai/runs?symbol=${sym}&limit=1`);
     if (rs.length) {
-      run = await api(`/api/crypto/ai/runs/${encodeURIComponent(rs[0].id)}`);
+      const detail = await api(`/api/crypto/ai/runs/${encodeURIComponent(rs[0].id)}`).catch(() => rs[0]);
+      if (!active()) return;
+      run = detail;
       const f = run.result?.findings || {}, mdl = run.models || {};
       roles = Object.fromEntries(ROLES.map((r) => [r.key, { status: run.status === "done" || f[r.key] ? "done" : run.status === "failed" ? "failed" : "waiting", finding: f[r.key], model: mdl[r.tier]?.used, score: run.result?.scores?.[r.key] }]));
-      msgs = run.events.filter((e) => e.kind === "message").map((e) => e.data);
+      msgs = (run.events || []).filter((e) => e.kind === "message").map((e) => e.data);
     } else { run = null; roles = {}; msgs = []; }
   };
   await loadState();
+  if (view !== location.hash) return;
   const plain = (t) => (t || "").replace(/^\s*\**\s*(Rating|Recommendation|FINAL TRANSACTION PROPOSAL)\b.*$/gim, "").replace(/^\s*[-*_]{3,}\s*$/gm, "").replace(/^\s*\|.*\|\s*$/gm, "").replace(/\*\*|__|`/g, "").replace(/^#+\s*/gm, "").replace(/^[-*]\s+/gm, "・").replace(/\n{2,}/g, "\n").trim();
   const simpleMd = (t) => esc(t || "").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/^#{1,6}\s*(.+)$/gm, "<h4>$1</h4>").replace(/\n/g, "<br>");
   const fullText = (k) => run?.result?.reports?.[k] || msgs.filter((m) => m.key === k).map((m) => m.text).join("\n\n");
@@ -857,10 +1020,28 @@ async function pageTeam(params) {
   };
   $("#graph").addEventListener("click", (e) => { const a = e.target.closest(".agent"); if (a && a.id !== "ag-new-strategy") openRole(a.id.replace("ag-", "")); });
   $("#graph").addEventListener("keydown", (e) => { const a = e.target.closest(".agent"); if (a && a.id !== "ag-new-strategy" && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openRole(a.id.replace("ag-", "")); } });
-  on("data_updated", () => route());
+  onData(["status.json", "runs.json", "settings.json", "new-paper.json"], async (active) => {
+    const [settings, latestPaper] = await Promise.all([
+      api("/api/crypto/ai/settings"), J("new-paper.json").catch(() => newPaper),
+    ]);
+    await loadState(active);
+    if (!active()) return;
+    A = settings.settings;
+    if (latestPaper !== newPaper) {
+      newPaper = latestPaper;
+      const temp = document.createElement("template"); temp.innerHTML = strategyBranchHTML(newPaper);
+      const next = $("#ag-new-strategy", temp.content);
+      if (next) patchHTML(strategyCard, next.innerHTML + '<button type="button" class="more" data-debate="strategy">與他辯論（本機）</button>');
+      const debate = $("[data-debate]", strategyCard);
+      if (debate) { debate.onclick = e => { e.stopPropagation(); showRoleDebate("strategy", run?.id); }; debate.onkeydown = e => e.stopPropagation(); }
+    }
+    render();
+  });
 
   const item = ov.items.find((i) => i.symbol === sym);
-  const spark = item.spark.slice();
+  let spark = item.spark.slice();
+  const teamView = $("#tp-spark");
+  void MK.ensureBars(sym, "1h").then(() => { if (teamView.isConnected) { spark = MK.summary(sym).spark; teamView.innerHTML = sparkSVG(spark, 160, 34); } });
   const px = (t) => { if (!t) return; $("#tp-px").textContent = fmtPrice(t.last); $("#tp-chg").innerHTML = `<span class="${signCls(t.change_pct)}">${fmtPct(t.change_pct)}</span>`; };
   px(live.tickers[sym] || item.ticker); $("#tp-spark").innerHTML = sparkSVG(spark, 160, 34);
   on("ticker", (t) => t.symbol === sym && px(t));
@@ -892,10 +1073,11 @@ async function pageTeam(params) {
 
 /* 模擬交易 / 研究報告 */
 async function pagePaper() {
+  const view = location.hash;
   setTitle("模擬交易", "只模擬・不下真實訂單");
-  const P = await J("paper.json");
-  await MK.ready;
-  const LEV = P.leverage || 10;
+  let P = await J("paper.json");
+  if (view !== location.hash) return;
+  let LEV = P.leverage || 10;
   const SIDE = { LONG: ["做多", "up"], SHORT: ["做空", "down"] };
   const ST = { pending: ["掛單中", "mid"], open: ["持倉中", "run"], closed: ["已平倉", "gray"], cancelled: ["已取消", "gray"], rejected: ["拒單", "high"], same_dir_refresh: ["同向更新", "gray"] };
   const usd = (x, d = 2) => (x == null || isNaN(x) ? "—" : `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}`);
@@ -908,11 +1090,10 @@ async function pagePaper() {
   const markOf = (o) => { const k = coinKey(o.symbol), m = MK.marks[k]; if (m) return m.px; const t = live.tickers[k] || MK.tickers[k]; return t ? t.last : o.mark_price; };
   const margin = (o) => o.margin || (o.notional ? o.notional / LEV : null);
   const unreal = (o) => { const mk = markOf(o); if (mk == null) return null; return (mk - o.fill_price) * o.qty * (o.side === "LONG" ? 1 : -1) + (o.funding_total || 0); };
-  const hist = P.orders.filter((o) => o.status === "closed").sort((a, b) => b.close_ms - a.close_ms);
-  const other = P.orders.filter((o) => ["cancelled", "rejected"].includes(o.status));
+  let hist = P.orders.filter((o) => o.status === "closed").sort((a, b) => b.close_ms - a.close_ms);
   let tab = pagePaper.tab || "pos", range = pagePaper.range || "3m";
   const RANGES = [["1d", "一天", 1], ["1w", "一週", 7], ["1m", "一個月", 30], ["3m", "三個月", 90]];
-  $("#app").innerHTML = `
+  const layout = () => `
 
   <div class="ro-banner bot-note">${smallIc("info", 15)}<span>AI 團隊策略・全程只模擬：虛擬 ${money(P.initial)} USDC，不連交易所、不下真實訂單。<b>計入永續資金費率，不計手續費</b>。價格全部來自 <b>Binance USDⓈ-M 永續合約（USDC 本位）</b>（v1.0.7 以前的舊紀錄是 OKX USDT 永續，金額直接沿用）；顯示用槓桿 <b>${LEV}x 逐倉</b>（保證金 = 名目 ÷ ${LEV}）。</span></div>
   ${P.engine && P.engine.last_error && /Binance/.test(P.engine.last_error) ? `<div class="callout" style="margin-bottom:12px"><b>注意</b><span>後台暫時連不上 Binance：${esc(P.engine.last_error)}（不會改用其他交易所，恢復後自動補算）</span></div>` : ""}
@@ -946,6 +1127,7 @@ async function pagePaper() {
       <p class="note">資料更新：開倉 / 平倉 / 資金費 / 掛單取消時後台立即推送；上次 ${fmtTime(P.generated_at)}（台北）。</p></section>
   </div>`;
 
+  $("#app").innerHTML = layout();
   const posBody = () => P.open.length ? `
     <table class="tbl pos-tbl"><thead><tr><th>合約</th><th>數量</th><th>開倉價格</th><th>標記價格</th><th>強平價格</th><th>保證金</th><th>盈虧（收益率）</th><th>停損 / 停利</th><th>到期時間（台北）</th><th></th></tr></thead><tbody>
     ${P.open.map((o) => `<tr><td>${contract(o)}<small class="dim">${o.margin_mode || "逐倉"}・${SIDE[o.side][0]}</small></td>
@@ -989,7 +1171,7 @@ async function pagePaper() {
     tab = TRADE_TABS.some(t => t[0] === next) ? next : "pos";
     pagePaper.tab = tab; pagePaper.range = range;
     selectTradeTab(tab);
-    $("#pp-body").innerHTML = {pos:posBody, ord:ordBody, orders:()=>tradeOrdersHTML(P.orders,"original"), fills:()=>tradeFillsHTML(tradeFills(P,"original")), hist:histBody}[tab]();
+    patchHTML($("#pp-body"), {pos:posBody, ord:ordBody, orders:()=>tradeOrdersHTML(P.orders,"original"), fills:()=>tradeFillsHTML(tradeFills(P,"original")), hist:histBody}[tab]());
     $$("#pp-range .tab").forEach(b => b.onclick = () => { range=b.dataset.r; renderTab(); });
     upd();
   };
@@ -1000,7 +1182,8 @@ async function pagePaper() {
   const ch = makeChart(el, 240, { timeScale: { borderColor: "#333b47", timeVisible: true } });
   const area = ch.addAreaSeries({ lineColor: "#0ecb81", topColor: "rgba(14,203,129,.28)", bottomColor: "rgba(14,203,129,0)", lineWidth: 2, priceFormat: { type: "custom", formatter: (v) => money(v) } });
   const base = [];
-  P.curve.forEach((p) => { const t = Math.floor(p.t / 1000) + TZ_SHIFT; if (base.length && base[base.length - 1].time >= t) base[base.length - 1].value = p.equity; else base.push({ time: t, value: p.equity }); });
+  const loadCurve = () => { base.length = 0; P.curve.forEach((p) => { const t = Math.floor(p.t / 1000) + TZ_SHIFT; if (base.length && base[base.length - 1].time >= t) base[base.length - 1].value = p.equity; else base.push({ time: t, value: p.equity }); }); };
+  loadCurve();
   area.createPriceLine({ price: P.initial, color: "rgba(129,147,173,.5)", lineStyle: 2, lineWidth: 1, axisLabelVisible: false, title: "起始" });
   const setTxt = (sel, html, cls) => $$(sel).forEach((e) => { e.innerHTML = html; if (cls != null) e.className = "num " + cls; });
   function upd() {
@@ -1025,26 +1208,43 @@ async function pagePaper() {
   renderTab(); ch.timeScale().fitContent();
   let last = 0; const th = () => { if (Date.now() - last > 1000) { last = Date.now(); upd(); } };
   on("ticker", th); on("mark", th);
-  on("data_updated", () => route());
+  onData(["paper.json"], async (active) => {
+    const next = await J("paper.json");
+    if (!active() || next === P) return;
+    const visible = ch.timeScale().getVisibleLogicalRange();
+    P = next; LEV = P.leverage || 10;
+    hist = P.orders.filter(o => o.status === "closed").sort((a, b) => b.close_ms - a.close_ms);
+    patchHTML($("#app"), layout(), "#eq-chart,#pp-body,#pp-eq,#pp-eq2");
+    loadCurve(); bindTradeTabs(renderTab); renderTab();
+    if (visible) ch.timeScale().setVisibleLogicalRange(visible);
+  });
 }
 async function pageReports() {
   setTitle("研究報告", "AI 團隊・繁體中文");
-  const [runs, usage] = await Promise.all([api("/api/crypto/ai/runs?limit=200"), J("ai-usage.json").catch(() => null)]);
-  $("#app").innerHTML = `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${runs.length} 份</span></div></div>
+  const load = () => Promise.all([api("/api/crypto/ai/runs?limit=200"), J("ai-usage.json").catch(() => null)]);
+  const layout = (runs, usage) => `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${runs.length} 份</span></div></div>
     ${runs.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="依金鑰槽位，含失敗重試">呼叫次數（依槽位）</th><th>耗時</th><th></th></tr></thead><tbody>
     ${runs.map((r) => { const d = DIRS[r.decision]; const m = r.models || {};
-      return `<tr class="run-row"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
+      return `<tr class="run-row" data-sync-key="${esc(r.id)}"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
         <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "sync_stale" ? `<span class="pill gray">同步中斷</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
         <td class="num">${r.status === "done" ? `${fmtLv(r.entry)} / <span class="down">${fmtLv(r.stop)}</span> / <span class="up">${fmtLv(r.take_profit)}</span>` : "—"}</td>
         <td class="muted num" style="font-size:12px">${m.quick ? `${esc(m.quick.used)}（槽位 ${m.quick.key_slot ?? "—"}）<br>${esc(m.deep.used)}（槽位 ${m.deep.key_slot ?? "—"}）${m.quick.fallback_reason ? '<br><span class="warn">快速已切換備援</span>' : ""}${m.deep.fallback_reason ? '<br><span class="warn">深度已切換備援</span>' : ""}` : "—"}</td>
         <td class="num" style="white-space:nowrap" title="${esc(callsTitle(r.calls))}">${fmtCalls(r.calls)}${r.calls?.reconstructed ? '<span class="warn" title="原始執行的呼叫次數由紀錄還原">＊</span>' : ""}</td><td class="num">${r.duration_s ? Math.round(r.duration_s) + " 秒" : "—"}</td>
         <td class="c">${r.status === "done" ? `<a class="ok" href="#/report/${encodeURIComponent(r.id)}">查看</a>` : ""}${r.pdf_url ? `・<a class="ok" target="_blank" href="${esc(r.pdf_url)}">PDF</a>` : ""}</td></tr>`; }).join("")}
     </tbody></table>` : `<div class="empty-state" style="height:180px">${ICON.report}<b>尚未執行 AI 分析</b><small>每次 AI 團隊分析完成都會產生一份繁體中文報告（含 PDF），列在這裡。</small></div>`}</section>`;
-  on("data_updated", () => route());
+  const view = location.hash, data = await load();
+  if (view !== location.hash) return;
+  $("#app").innerHTML = layout(...data);
+  onData(["status.json", "runs.json", "ai-usage.json"], async (active) => {
+    const data = await load();
+    if (active()) patchHTML($("#app"), layout(...data));
+  });
 }
 const REPORT_ORDER = [["pm", "投資組合經理｜最終決策"], ["trader", "交易員｜交易計畫"], ["manager", "研究經理｜研究結論"], ["market", "技術分析師"], ["sentiment", "情緒分析師"], ["news", "加密新聞分析師"], ["onchain", "鏈上 / 衍生品分析師"], ["bull", "多頭研究員"], ["bear", "空頭研究員"], ["aggressive", "積極派風控"], ["conservative", "保守派風控"], ["neutral", "中立派風控"]];
 async function pageReport(id) {
+  const view = location.hash;
   const r = await api(`/api/crypto/ai/runs/${encodeURIComponent(id)}`);
+  if (view !== location.hash) return;
   const res = r.result || {}, dec = res.decision || {}, m = r.models || {}, c = r.calls || {};
   setTitle(`${baseOf(r.symbol)} 研究報告`, fmtTime(r.created_at) + "（台北）");
   const srcs = Object.entries(r.sources || {});
@@ -1079,9 +1279,10 @@ async function pageReport(id) {
 }
 
 /* 設定（公開版：唯讀） */
-async function pageSettings() {
+async function pageSettings(active) {
   setTitle("設定", "唯讀");
   const [cs, AS, st] = await Promise.all([api("/api/crypto/settings"), api("/api/crypto/ai/settings"), J("status.json")]);
+  if (active && !active()) return;
   const S = cs.settings, ms = cs.status, A = AS.settings, KS = AS.key_status || {};
   const PROV = { google: "Google Gemini", xai: "xAI Grok", openai: "OpenAI", anthropic: "Anthropic" };
   const hh = (h) => (h == null ? "—" : String(h).padStart(2, "0") + ":00");
@@ -1100,7 +1301,7 @@ async function pageSettings() {
       <div>金鑰</div><div>${KS[t] ? '<span class="ok">已設定</span>' : '<span class="bad">未設定</span>'}</div>
       <div>額度用完備援</div><div class="num">${esc(c.fallback_model || "不使用")}<br><span class="dim">同一把金鑰</span></div>
     </div></div>`; };
-  $("#app").innerHTML = `${noteHTML()}
+  const layout = `${noteHTML()}
   <div class="set-grid">
     <section class="card"><div class="card-h"><h2>${ICON.hourglass}自動排程</h2><div class="right"><span class="pill ${A.schedule_enabled ? "done" : "gray"}">${A.schedule_enabled ? "● 已啟用" : "● 已關閉"}</span></div></div>
       <div class="cfg" style="grid-template-columns:150px 1fr">
@@ -1162,7 +1363,9 @@ async function pageSettings() {
       <tr><td>鏈上數據</td><td>BTC：BTC 鏈上擁堵度（mempool.space）、blockchain.info；ETH / ZEC：Blockchair</td><td class="c">分析時</td></tr>
       <tr><td>AI 決策與報告</td><td>TradingAgents（12 位 AI 代理）</td><td class="c">每次分析完成</td></tr>
     </tbody></table></section>`;
-  on("data_updated", () => route());
+  patchHTML($("#app"), layout);
+  if (active) return;
+  onData(["settings.json", "status.json"], pageSettings);
   const upd = () => { const m = MK.status, p = $("#ws-pill"), l = $("#ws-last"); if (!p) return;
     const q = m.quote || {}, r = quoteStatusText(q);
     p.className = "pill " + (q.connected ? "done" : "high"); p.textContent = q.connected ? "● Binance 報價已連線" : q.state === "failed" ? "● Binance 報價無法連線" : "● Binance 報價未連線";
@@ -1183,6 +1386,9 @@ async function route() {
   window.scrollTo(0, 0);
   try {
     let m;
+    if (/^\/(coin\/|paper(?:\/|$)|team$)/.test(path) || path === "/" || path === "") MK.start();
+    if (/^\/(coin\/|paper(?:\/|$))/.test(path)) await loadChartLibrary();
+    if (h !== (location.hash || "#/")) return;
     if (path === "/" || path === "") { renderNav("home"); await pageOverview(); }
     else if ((m = path.match(/^\/coin\/([A-Za-z0-9]+)/))) { renderNav("coin"); await pageCoin(m[1], params); }
     else if (path === "/team") { renderNav("team"); await pageTeam(params); }
@@ -1202,11 +1408,25 @@ document.addEventListener("click", e => { const dd = $(".nav-dropdown"); if (dd 
 window.addEventListener("hashchange", route);
 setInterval(tickElapsed, 1000);
 connectLive();
+let chartLibrary;
+function loadChartLibrary() {
+  if (typeof LightweightCharts !== "undefined") return Promise.resolve();
+  if (!chartLibrary) chartLibrary = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "vendor/lightweight-charts.standalone.production.js";
+    script.onload = resolve;
+    script.onerror = () => { chartLibrary = null; script.remove(); reject(new Error("圖表元件載入失敗")); };
+    document.head.append(script);
+  });
+  return chartLibrary;
+}
+if ($("#frontend-update")) $("#frontend-update").onclick = () => location.reload();
 (async () => {
-  let cfg = null;
-  try { cfg = (await J("settings.json")).signal_settings; } catch (e) {}
-  MK.start(cfg || undefined);
-  // 執行中每 25 秒輪詢 status.json（加 ?v= 防快取），閒置時每 60 秒
-  await pollData(); const loopPoll = () => setTimeout(async () => { await pollData(); loopPoll(); }, DATA.cache["status.json"]?.v?.busy ? 25000 : 60000); loopPoll();
-  route();
+  const cfg = J("settings.json").then(s => { MK.configure(s.signal_settings); WATCH = MK.cfg.watchlist; }).catch(() => {});
+  const status = pollData();
+  await cfg;
+  void route();
+  const loopPoll = () => setTimeout(async () => { await pollData(); loopPoll(); }, DATA.cache["status.json"]?.v?.busy ? 25000 : 60000);
+  void status.finally(loopPoll);
+  if (usesRelay) void pollRelay();
 })();
