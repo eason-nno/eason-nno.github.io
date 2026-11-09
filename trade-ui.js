@@ -20,6 +20,22 @@ function bindTradeTabs(render) {
     };
   });
 }
+function tradePage(items, pages, tab) {
+  const size = 5, total = Math.max(1, Math.ceil(items.length / size));
+  const page = Math.max(0, Math.min(pages[tab] || 0, total - 1));
+  pages[tab] = page;
+  const footer = total === 1 ? "" : `<nav class="trade-pager" aria-label="倉位分頁">
+    <button type="button" class="tab outline" data-trade-page="${page - 1}" ${page === 0 ? "disabled" : ""}>上一頁</button>
+    <span aria-live="polite">${page + 1} / ${total} 頁・共 ${items.length} 筆</span>
+    <button type="button" class="tab outline" data-trade-page="${page + 1}" ${page === total - 1 ? "disabled" : ""}>下一頁</button>
+  </nav>`;
+  return {rows: items.slice(page * size, (page + 1) * size), footer};
+}
+function bindTradePager(pages, tab, render) {
+  $$("#pp-body [data-trade-page]").forEach(button => {
+    button.onclick = () => { pages[tab] = Number(button.dataset.tradePage); render(); };
+  });
+}
 function tradeReportId(order) {
   return order.position_review_id ? order.report_id : (order.report_id || order.run_id);
 }

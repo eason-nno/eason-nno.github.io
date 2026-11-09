@@ -355,11 +355,19 @@ function teamCard(s) {
 }
 function tickElapsed() { document.querySelectorAll("[data-elapsed]").forEach((e) => { e.textContent = fmtDur(Date.now() - new Date(e.dataset.elapsed)); }); }
 function holdTxt(d) { d = +d || 1; return d === 1 ? "24 小時" : `${d} 天`; }
-/* 呼叫次數：依金鑰槽位顯示（槽1 9・槽2 8・槽3 0）；補完成的 run 會附分段與說明 */
-const slotShort = (k) => k.replace(/^google\s*/, "").replace(/槽位\s*/, "槽");
-const fmtCalls = (c) => { if (!c) return "—"; if (!c.by_slot) return `快速 ${c.quick?.calls ?? 0}・深度 ${c.deep?.calls ?? 0}`;
-  const e = Object.entries(c.by_slot).map(([k, v]) => [slotShort(k), v.calls]); if (e.some(([k]) => /^槽\d/.test(k)) && !e.some(([k]) => k === "槽3")) e.push(["槽3", 0]);
-  return e.sort(([a], [b]) => a.localeCompare(b)).map(([k, n]) => `${k} ${n}`).join("・"); };
+/* 研究呼叫次數沿用舊報告帳本，將不同年代的槽位名稱對齊成五組。 */
+const slotNumber = k => /^openai\b/i.test(k) ? 5 : Number(k.match(/(?:槽位?\s*|第\s*)([1-5])(?:\s*組)?$/)?.[1]);
+const slotShort = k => slotNumber(k) ? `第 ${slotNumber(k)} 組` : k;
+const fmtCalls = c => {
+  if (!c) return "—";
+  if (!c.by_slot) return `快速 ${c.quick?.calls ?? 0}・深度 ${c.deep?.calls ?? 0}`;
+  const counts = [0, 0, 0, 0, 0];
+  for (const [label, entry] of Object.entries(c.by_slot)) {
+    const slot = slotNumber(label);
+    if (slot) counts[slot - 1] += Number(entry.calls) || 0;
+  }
+  return counts.map((count, i) => `第 ${i + 1} 組 ${count}`).join("・");
+};
 const callsTitle = (c) => !c ? "" : [`合計 ${(c.quick?.calls || 0) + (c.deep?.calls || 0)} 次（快速 ${c.quick?.calls ?? 0}・深度 ${c.deep?.calls ?? 0}，含失敗重試）`,
   ...(c.parts || []).map((p) => `${p.label}：${p.calls} 次（${Object.entries(p.by_slot || {}).filter(([, n]) => n).map(([k, n]) => slotShort(k) + " " + n).join("・") || "0"}）`), c.note || ""].filter(Boolean).join("\n");
 function friendlyErr(e) {
@@ -1095,10 +1103,11 @@ async function pagePaper() {
   const unreal = (o) => { const mk = markOf(o); if (mk == null) return null; return (mk - o.fill_price) * o.qty * (o.side === "LONG" ? 1 : -1) + (o.funding_total || 0); };
   let hist = P.orders.filter((o) => o.status === "closed").sort((a, b) => b.close_ms - a.close_ms);
   let tab = pagePaper.tab || "pos", range = pagePaper.range || "3m";
+  const pages = pagePaper.pages ||= {};
   const RANGES = [["1d", "一天", 1], ["1w", "一週", 7], ["1m", "一個月", 30], ["3m", "三個月", 90]];
   const layout = () => `
 
-  <div class="ro-banner bot-note">${smallIc("info", 15)}<span>AI 團隊策略・全程只模擬：虛擬 ${money(P.initial)} USDC，不連交易所、不下真實訂單。<b>計入永續資金費率，不計手續費</b>。價格全部來自 <b>Binance USDⓈ-M 永續合約（USDC 本位）</b>（v1.0.7 以前的舊紀錄是 OKX USDT 永續，金額直接沿用）；顯示用槓桿 <b>${LEV}x 逐倉</b>（保證金 = 名目 ÷ ${LEV}）。</span></div>
+  <div class="ro-banner bot-note">${smallIc("info", 15)}<span>AI 團隊策略・虛擬 ${money(P.initial)} USDC・只做模擬</span></div>
   ${P.engine && P.engine.last_error && /Binance/.test(P.engine.last_error) ? `<div class="callout" style="margin-bottom:12px"><b>注意</b><span>後台暫時連不上 Binance：${esc(P.engine.last_error)}（不會改用其他交易所，恢復後自動補算）</span></div>` : ""}
   <div class="grid-4">
     <div class="card kcard"><small>目前權益（含未實現）</small><div class="row"><span class="big num" id="pp-eq">—</span></div><small class="num" id="pp-eq2"></small></div>
@@ -1116,29 +1125,18 @@ async function pagePaper() {
         : `<div class="empty-state" style="height:110px"><b>尚無資金費紀錄</b><small>持倉跨過 Binance 結算時間才會計入（BTC / ETH 每 8 小時：台北 00:00、08:00、16:00；ZEC 每 4 小時）。</small></div>`}</section>
     <section class="card"><div class="card-h"><h2>${ICON.people || ICON.shield}夜間持倉評估</h2></div><p class="note">投資組合經理於設定的停報時段每小時檢查原版現有持倉／委託，不產生新研究報告；價格保護持續運作。開關位於本機控制台。</p>
     ${(P.position_reviews||[]).length?`<div class="review-list">${P.position_reviews.map(r=>`<details class="din"><summary>${esc(baseOf(r.symbol))}・${fmtTime(r.created_at)}・${esc(({completed:"已評估",failed:"未完成",interrupted:"已中斷",running:"評估中",ready:"驗證中"})[r.status]||r.status)}・${esc(({HOLD:"續抱",CLOSE:"只平倉",REVERSE:"反手",UPDATE_RISK:"調整保護",CANCEL_ORDER:"取消委託",WAIT:"觀望"})[r.decision?.action]||"")}</summary><div class="note" style="padding:12px"><p>${esc(r.decision?.executive_summary||r.error||"等待評估結果")}</p><p>${esc(r.execution?.reason||"")}</p><p>下次檢查：${esc(r.decision?.invalidation||"—")}・模型 ${esc(r.model||"—")}</p>${r.report_id?`<a class="ok" href="#/report/${encodeURIComponent(r.report_id)}">參考研究</a>`:""}</div></details>`).join("")}</div>`:'<p class="note">尚無夜間評估紀錄；沒有持倉／委託時不呼叫AI。</p>'}</section>
-    <section class="card"><div class="card-h"><h2>${ICON.shield}模擬規則</h2></div>
-      <ul class="bullets" style="font-size:12.8px;line-height:1.7">
-        <li>帳戶：虛擬 ${money(P.initial)} USDC（v1.0.7 以前的舊紀錄以 USDT 計，數值直接沿用）；權益 = 初始資金 + 已實現價差 + 累計資金費；手續費 = 0。</li>
-        <li>下單：AI 明確選擇新開倉或反手時，自選市價或限價。限價在市價較有利時立即模擬成交，${P.pending_hours} 小時內未成交則取消；成交前資金或保護價位驗證未通過則拒單。歷史舊單保留原規則。</li>
-        <li>部位：風險 = 權益 × ${P.risk_pct}%，數量 = 風險 ÷ |成交價 − 停損|，名目上限 = 權益 × AI 建議部位 %。</li>
-        <li>槓桿與強平：顯示用預設 ${LEV}x 逐倉，保證金 = 名目 ÷ ${LEV}，收益率 = 盈虧 ÷ 保證金。預估強平價 = 開倉價 × (1 ∓ 1/${LEV}) ÷ (1 ∓ 維持保證金率)，維持保證金率用 Binance 第 1 檔（BTC / ETH 0.4%、ZEC 1%）。AI 停損通常在進場價 1–3% 內，比 10x 強平價（約 9.5%）近；本模擬不另外模擬強平。</li>
-        <li>每個幣種同時一筆：團隊依報告標的明確決定新開倉、續抱、只平倉、反手、調整保護或取消委託。反手由 AI 選市價或限價，新單先驗證才平舊倉；不加碼、不延長既有到期。舊報告保留原紀錄。</li>
-        <li>出場：後台用 Binance USDC 永續即時成交（WebSocket aggTrade，斷線時改用 1 分 K 最高 / 最低價）檢查，觸及停損 / 停利即出場；同一根同時觸及視為先停損；成交滿持有期限以市價平倉：持有期限 = AI 設定的持有天數 × 24 小時（目前 ${P.hold_hours} 小時）；改為 24 小時之前下的單維持原本 48 小時。</li>
-        <li>資金費：Binance USDC 永續實際資金費率（v1.0.7 以前為 OKX），在結算時仍持倉才計入；做多付正費率、做空收正費率。</li>
-        <li>標記價格：網頁用 Binance WebSocket 標記價格（markPrice@1s）串流即時更新；未實現盈虧 = (標記價 − 開倉價) × 數量 × 方向 + 已計資金費。</li>
-      </ul>
-      <p class="note">資料更新：開倉 / 平倉 / 資金費 / 掛單取消時後台立即推送；上次 ${fmtTime(P.generated_at)}（台北）。</p></section>
+
   </div>`;
 
   $("#app").innerHTML = layout();
-  const posBody = () => P.open.length ? `
+  const posBody = open => open.length ? `
     <table class="tbl pos-tbl"><thead><tr><th>合約</th><th>數量</th><th>開倉價格</th><th>標記價格</th><th>強平價格</th><th>保證金</th><th>盈虧（收益率）</th><th>停損 / 停利</th><th>到期時間（台北）</th><th></th></tr></thead><tbody>
-    ${P.open.map((o) => `<tr><td>${contract(o)}<small class="dim">${o.margin_mode || "逐倉"}・${SIDE[o.side][0]}</small></td>
+    ${open.map((o) => `<tr><td>${contract(o)}<small class="dim">${o.margin_mode || "逐倉"}・${SIDE[o.side][0]}</small></td>
       <td class="num ${SIDE[o.side][1]}"><b>${qtyTxt(o)}</b></td><td class="num">${fmtPrice(o.fill_price)}</td><td class="num" data-pp-mk="${o.id}">—</td>
       <td class="num warn">${o.liq_price ? fmtPrice(o.liq_price) : "—"}</td><td class="num">${money(margin(o))}<small class="dim"> ${unitOf(o.symbol)}</small></td>
       <td class="num" data-pp-u="${o.id}">—</td><td class="num"><span class="down">${fmtPrice(o.stop)}</span> / <span class="up">${fmtPrice(o.take_profit)}</span></td>
       <td class="num">${fmtTime(o.hold_until)}</td><td>${runLink(o)}</td></tr>`).join("")}</tbody></table>
-    <div class="pos-cards">${P.open.map((o) => `<div class="pcard">
+    <div class="pos-cards">${open.map((o) => `<div class="pcard">
       <div class="pc-h">${contract(o)}<span class="tag">${o.margin_mode || "逐倉"}</span><span class="tag ${o.side === "LONG" ? "t-up" : "t-down"}">${SIDE[o.side][0]}</span></div>
       <div class="pc-pnl"><div><small>盈虧（${unitOf(o.symbol)}）</small><b class="num" data-pp-u2="${o.id}">—</b></div><div class="r"><small>收益率</small><b class="num" data-pp-r2="${o.id}">—</b></div></div>
       <div class="pc-grid"><div><small>數量</small><b class="num ${SIDE[o.side][1]}">${qtyTxt(o)}</b></div><div><small>開倉價格</small><b class="num">${fmtPrice(o.fill_price)}</b></div><div><small>標記價格</small><b class="num" data-pp-mk2="${o.id}">—</b></div>
@@ -1160,7 +1158,7 @@ async function pagePaper() {
     : `<div class="empty-state" style="height:120px"><b>沒有掛單</b></div>`;
   const histBody = () => {
     const days = RANGES.find((r) => r[0] === range)[2], since = Date.now() - days * 86400000;
-    const rows = hist.filter((o) => o.close_ms >= since);
+    const {rows, footer} = tradePage(hist.filter(o => o.close_ms >= since), pages, "hist");
     return `<div class="tabs compact pp-range" id="pp-range">${RANGES.map(([k, t]) => `<button class="tab outline ${k === range ? "active" : ""}" data-r="${k}">${t}</button>`).join("")}</div>
     ${rows.length ? `<div class="hist-rows">${rows.map((o) => `<article class="hist-row">
       <div class="hist-head"><div class="hist-contract">${coinIcon(baseOf(o.symbol), 22)}${contract(o)}<span class="tag">${esc(o.margin_mode || "逐倉")}</span><span class="tag ${o.side === "LONG" ? "t-up" : "t-down"}">${SIDE[o.side][0]}</span><span class="hist-state">完全平倉</span></div>
@@ -1168,14 +1166,15 @@ async function pagePaper() {
       <dl class="hist-metrics"><div><dt>已實現盈虧（含資金費）</dt><dd class="num ${signCls(o.pnl_net)}">${usd(o.pnl_net)} ${unitOf(o.symbol)}</dd></div><div><dt>收益率</dt><dd class="num ${signCls(o.roi_pct)}">${o.roi_pct == null ? "—" : fmtPct(o.roi_pct)}</dd></div>
         <div><dt>已平倉量</dt><dd class="num">${qtyTxt({ ...o, qty: o.closed_qty || o.qty })}</dd></div><div><dt>開倉價格</dt><dd class="num">${fmtPrice(o.fill_price)}</dd></div><div><dt>平倉均價</dt><dd class="num">${fmtPrice(o.close_price)}</dd></div><div><dt>最大未平倉量</dt><dd class="num">${qtyTxt({ ...o, qty: o.max_qty || o.qty })}</dd></div></dl>
       <div class="hist-foot"><span>出場原因 <b class="${REASON(o.close_reason) === "停利" ? "up" : REASON(o.close_reason) === "停損" ? "down" : ""}">${esc(REASON(o.close_reason))}</b></span><span>價差 ${usd(o.pnl_price)}・資金費 ${usd(o.funding_total, 4)}</span>${runLink(o)}</div></article>`).join("")}</div>`
-      : `<div class="empty-state" style="height:110px">${ICON.paper}<b>${RANGES.find((r) => r[0] === range)[1]}內沒有已平倉的倉位</b></div>`}`;
+      : `<div class="empty-state" style="height:110px">${ICON.paper}<b>${RANGES.find((r) => r[0] === range)[1]}內沒有已平倉的倉位</b></div>`}${footer}`;
   };
   const renderTab = (next = tab) => {
     tab = TRADE_TABS.some(t => t[0] === next) ? next : "pos";
     pagePaper.tab = tab; pagePaper.range = range;
     selectTradeTab(tab);
-    patchHTML($("#pp-body"), {pos:posBody, ord:ordBody, orders:()=>tradeOrdersHTML(P.orders,"original"), fills:()=>tradeFillsHTML(tradeFills(P,"original")), hist:histBody}[tab]());
-    $$("#pp-range .tab").forEach(b => b.onclick = () => { range=b.dataset.r; renderTab(); });
+    patchHTML($("#pp-body"), {pos:()=>{const {rows,footer}=tradePage(P.open,pages,"pos");return posBody(rows)+footer}, ord:ordBody, orders:()=>tradeOrdersHTML(P.orders,"original"), fills:()=>tradeFillsHTML(tradeFills(P,"original")), hist:histBody}[tab]());
+    $$("#pp-range .tab").forEach(b => b.onclick = () => { range=b.dataset.r; pages.hist=0; renderTab(); });
+    bindTradePager(pages,tab,renderTab);
     upd();
   };
   bindTradeTabs(renderTab);
@@ -1226,7 +1225,7 @@ async function pageReports() {
   setTitle("研究報告", "AI 團隊・繁體中文");
   const load = () => Promise.all([api("/api/crypto/ai/runs?limit=200"), J("ai-usage.json").catch(() => null)]);
   const layout = (runs, usage) => `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${runs.length} 份</span></div></div>
-    ${runs.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="依金鑰槽位，含失敗重試">呼叫次數（依槽位）</th><th>耗時</th><th></th></tr></thead><tbody>
+    ${runs.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="第 1 至 5 組，含失敗重試">呼叫次數（依組別）</th><th>耗時</th><th></th></tr></thead><tbody>
     ${runs.map((r) => { const d = DIRS[r.decision]; const m = r.models || {};
       return `<tr class="run-row" data-sync-key="${esc(r.id)}"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
         <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "sync_stale" ? `<span class="pill gray">同步中斷</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
