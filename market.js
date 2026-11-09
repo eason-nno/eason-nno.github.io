@@ -174,9 +174,10 @@ function bnMerge(prev, kind, d, recvMs) {
   q.event_time = Math.max(ts || 0, q.event_time || 0); q.recv_at = recvMs;
   return q;
 }
-/** Binance USDC 永續 24h 成交額前 n（quoteVolume，USDC；排除穩定幣與交割合約）。輸入為 REST /fapi/v1/ticker/24hr 陣列。 */
-function bnTopVolume(tickers, n = 10) {
-  return tickers.filter((x) => /^[A-Z0-9]+USDC$/.test(x.symbol || "")).map((x) => ({ t: bnTicker(x), base: mkBase(x.symbol) }))
+/** 指定報價幣種的 Binance 永續合約 24h 成交額前 n，排除穩定幣與交割合約。 */
+function bnTopVolume(tickers, n = 10, quote = "USDC") {
+  const perpetual = new RegExp("^[A-Z0-9]+" + quote + "$");
+  return tickers.filter((x) => perpetual.test(x.symbol || "")).map((x) => ({ t: bnTicker(x), base: mkBase(x.symbol) }))
     .filter(({ base }) => !BN_STABLE.has(base))
     .map(({ t, base }) => ({ key: base, name: base, symbol: t.symbol, inst: t.symbol, last: t.last, change_pct: t.open > 0 ? Math.round(((t.last - t.open) / t.open) * 10000) / 100 : 0, quote_volume: t.quote_volume, members: [] }))
     .filter((x) => x.quote_volume > 0).sort((a, b) => b.quote_volume - a.quote_volume).slice(0, n);
@@ -283,7 +284,7 @@ if (typeof window !== "undefined") {
     async loadHeat() {
       // 市場板塊：載入時呼叫一次 Binance 24h tickers，之後由 WS ticker 更新
       const all = await this.rest(`/fapi/v1/ticker/24hr`);
-      const top = bnTopVolume(all, 10);
+      const top = bnTopVolume(all, 10, "USDT");
       this.heatInst = top.map((x) => x.symbol);
       for (const x of all) if (this.heatInst.includes(x.symbol) || this.cfg.watchlist.includes(x.symbol)) {
         const q = bnMerge(this.quotes[x.symbol], "ticker", bnTicker(x), Date.now()); if (q) this.quotes[q.symbol] = q;
@@ -295,7 +296,7 @@ if (typeof window !== "undefined") {
       const items = this.heatInst.map((s) => this.quotes[s]).filter(Boolean)
         .map((q) => ({ key: mkBase(q.symbol), name: mkBase(q.symbol), symbol: q.symbol, inst: q.inst, last: q.last, change_pct: q.change_pct, quote_volume: q.quote_volume, members: [] }))
         .sort((a, b) => b.quote_volume - a.quote_volume);
-      this.categories = { updated_at: new Date().toISOString(), items, kind: "top_volume", note: "Binance USDⓈ-M USDC 永續合約 24h 成交額前 10（quoteVolume，排除穩定幣；WebSocket 即時更新）" };
+      this.categories = { updated_at: new Date().toISOString(), items, kind: "top_volume", quote: "USDT" };
       this.emit("categories", this.categories);
     },
     async refreshSentiment() {

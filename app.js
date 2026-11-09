@@ -540,7 +540,7 @@ async function pageOverview() {
     <section class="card ai-feed-card"><div class="card-h"><h2>${ICON.spark}AI 研究動態</h2><div class="right"><span class="chip-muted">排程 / 手動分析・台北時間</span></div></div>
       <div id="feed-wrap"></div></section>
     <section class="card ov-heat"><div class="card-h"><h2>${ICON.grid}市場板塊</h2><div class="right"><span class="chip-muted">24h 成交額前 10・即時</span></div></div>
-      <div class="heat" id="heat"></div><div class="note" style="margin-top:8px" id="heat-note"></div></section>
+      <div class="heat" id="heat"></div><div id="heat-labels" class="heat-labels" aria-label="市場板塊幣種"></div></section>
     </div>
   </div>
   <div class="ov-div">
@@ -583,18 +583,21 @@ async function pageOverview() {
   let heatCategory=null,heatFrame=null;
   const drawHeat = () => {
     heatFrame=null;const cat=heatCategory,el=$("#heat");if(!el)return;
-    const rect=el.getBoundingClientRect(),items=(cat?.kind==="top_volume"&&cat.items)||[];
+    const rect=el.getBoundingClientRect(),items=(cat?.kind==="top_volume"&&cat.quote==="USDT"&&cat.items)||[];
+    const labels=$("#heat-labels");
     const boxes=volumeTreemap(items,rect.width,rect.height);
-    if(!boxes.length){el.innerHTML='<div class="empty-state" style="height:100%"><b>成交額排行載入中／尚無有效資料</b></div>';return}
+    if(!boxes.length){labels.replaceChildren();el.innerHTML='<div class="empty-state" style="height:100%"><b>成交額排行載入中／尚無有效資料</b></div>';return}
     const color=value=>Number.isFinite(value)?`rgba(${value>=0?"30,170,105":"220,70,90"},${Math.min(Math.abs(value)/5,1)*.55+.25})`:'#29313b';
+    const overflow=[];
     el.innerHTML=boxes.map(box=>{
       const c=box.item,pct=c.change_pct==null||c.change_pct===''?NaN:Number(c.change_pct),change=Number.isFinite(pct)?fmtPct(pct):'—';
-      const compact=box.w<120||box.h<75,mini=box.w<65||box.h<42,micro=box.w<28||box.h<18;
-      const description=`${c.symbol}・24h ${change}・成交額 ${fmtBig(c.quote_volume)} USDC・占比 ${(box.share*100).toFixed(2)}%`;
-      return `<button type="button" class="tile${compact?' heat-compact':''}${mini?' heat-mini':''}${micro?' heat-micro':''}" data-heat-symbol="${esc(c.symbol)}" data-volume-share="${box.share}" style="left:${box.x/rect.width*100}%;top:${box.y/rect.height*100}%;width:${box.w/rect.width*100}%;height:${box.h/rect.height*100}%;background:${color(pct)}" title="${esc(description)}" aria-label="${esc(description)}"><b>${esc(c.name||baseOf(c.symbol))}</b><span class="num">${change}</span><small>${fmtBig(c.quote_volume)} USDC</small></button>`;
+      const compact=box.w<120||box.h<75,mini=box.w<65||box.h<42,name=c.name||baseOf(c.symbol),micro=box.w<name.length*7+8||box.h<16;
+      if(micro)overflow.push({name,pct});
+      const description=`${name}・24h ${change}・成交額 ${fmtBig(c.quote_volume)} U・占比 ${(box.share*100).toFixed(2)}%`;
+      return `<button type="button" class="tile${compact?' heat-compact':''}${mini?' heat-mini':''}${micro?' heat-micro':''}" data-heat-symbol="${esc(c.symbol)}" data-volume-share="${box.share}" style="left:${box.x/rect.width*100}%;top:${box.y/rect.height*100}%;width:${box.w/rect.width*100}%;height:${box.h/rect.height*100}%;background:${color(pct)}" title="${esc(description)}" aria-label="${esc(description)}"><b>${esc(name)}</b><span class="num">${change}</span><small>${fmtBig(c.quote_volume)} U</small></button>`;
     }).join('');
     $$('[data-heat-symbol]',el).forEach(button=>button.onclick=()=>toast(esc(button.title)));
-    $("#heat-note").textContent=`面積依24h成交額占比・顏色為漲跌幅・小區塊可點選查看・${cat.note||''}・更新 ${fmtTime(cat.updated_at)}`;
+    labels.innerHTML=overflow.map(({name,pct})=>`<span style="background:${color(pct)}">${esc(name)}</span>`).join("");
   };
   const renderHeat=cat=>{heatCategory=cat;if(heatFrame===null)heatFrame=requestAnimationFrame(drawHeat)};
   const heatResize=new ResizeObserver(()=>{if(heatFrame===null)heatFrame=requestAnimationFrame(drawHeat)});heatResize.observe($("#heat"));
