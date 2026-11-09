@@ -545,6 +545,11 @@ async function pageOverview() {
       <tbody id="ov-rows"></tbody></table>
       <p class="note" style="margin:8px 2px 0">點選列可切換下方「多空分歧明細」；按 › 進入幣種研究頁。</p>
     </section>
+    <section class="card hl-card" id="home-hyperliquid">
+      <div class="card-h"><h2>${ICON.chain}Hyperliquid 鯨魚清算地圖</h2><div class="right">
+        <select class="select" id="hl-coin" aria-label="選擇清算地圖幣種"><option>BTC</option><option>ETH</option><option>ZEC</option></select>
+      </div></div><div id="hl-map"></div>
+    </section>
     <section class="card ai-feed-card"><div class="card-h"><h2>${ICON.spark}AI 研究動態</h2><div class="right"><span class="chip-muted">排程 / 手動分析・台北時間</span></div></div>
       <div id="feed-wrap"></div></section>
     <section class="card ov-heat"><div class="card-h"><h2>${ICON.grid}市場板塊</h2><div class="right"><span class="chip-muted">24h 成交額前 10・即時</span></div></div>
@@ -555,6 +560,8 @@ async function pageOverview() {
     <section class="card"><div class="card-h"><h2>${ICON.scale}多空分歧明細</h2><div class="right"><select class="select" id="div-sel">${WATCH.map((s) => `<option ${s === ovSel ? "selected" : ""} value="${s}">${baseOf(s)}</option>`).join("")}</select></div></div>
       <div id="div-body"></div></section>
   </div>`;
+
+  mountHyperliquidMap();
 
   const pxHTML = (t) => { const chgAbs = t.last != null && t.open != null ? t.last - t.open : null;
     return `<b>${fmtPrice(t.last)}</b><small class="${signCls(t.change_pct)}">${chgAbs == null ? "" : (chgAbs > 0 ? "+" : "") + fmtPrice(chgAbs)} (${fmtPct(t.change_pct)})</small>`; };
@@ -673,6 +680,166 @@ async function pageOverview() {
     try { const nd = await api("/api/crypto/overview"); nd.items.forEach((i) => { items[i.symbol] = i; const o = d.items.findIndex((x) => x.symbol === i.symbol); if (o >= 0) d.items[o] = i; }); renderRows(); renderDiv(); } catch (e) { /* ignore */ }
   }, 60000);
   pageCleanup.push(() => clearInterval(iv));
+}
+
+function mountHyperliquidMap() {
+  const card = $("#home-hyperliquid");
+  const selector = $("#hl-coin", card);
+  const map = $("#hl-map", card);
+  let markets = {}, request = 0, ageTimer;
+  const render = () => {
+    const symbol = selector.value;
+    const snapshot = markets[coinKey(symbol)]?.hyperliquid;
+    patchHTML(map, hyperliquidPanel(snapshot, Date.now(), symbol));
+    clearTimeout(ageTimer);
+    const timeLeft = snapshot?.updated_ms + (snapshot?.stale_after_ms || 180000) - Date.now();
+    if (!snapshot?.stale && timeLeft > 0 && timeLeft < 86400000) ageTimer = setTimeout(render, timeLeft + 100);
+  };
+  const load = async (active = () => card.isConnected) => {
+    const version = ++request;
+    const next = await J("market.json").catch(() => null);
+    if (!active() || version !== request || !next) return;
+    markets = next.derivs || {};
+    render();
+  };
+  const inspectBar = (event) => {
+    const bar = event.target.closest(".hl-bin");
+    if (bar) $(".hl-chart-readout", map).textContent = bar.getAttribute("aria-label");
+  };
+  map.addEventListener("mouseover", inspectBar);
+  map.addEventListener("focusin", inspectBar);
+  selector.onchange = render;
+  pageCleanup.push(() => clearTimeout(ageTimer));
+  render();
+  onData(["market.json"], load);
+  void load();
+}
+
+function hyperliquidChart(levels, mark, qty, usd) {
+  if (!Number.isFinite(mark) || mark <= 0) return '<p class="note">等待 Hyperliquid 標記價，強平價位請見下方。</p>';
+  const bins = levels.filter(r => r.estimated_notional > 0 && Number.isFinite(r.estimated_notional)
+    && !r.crossed_mark && !(r.distance_pct < 0)
+    && (r.side === "long" ? r.price_low < mark : r.price_high > mark)).map(r => ({
+    ...r, left: r.side === "short" ? Math.max(r.price_low, mark) : r.price_low,
+    right: r.side === "long" ? Math.min(r.price_high, mark) : r.price_high,
+  }));
+  if (!bins.length) return '<p class="note">目前樣本沒有可繪製的未觸發強平區間。</p>';
+  const left = 68, right = 752, top = 30, bottom = 190;
+  const low = Math.min(mark, ...bins.map(r => r.left));
+  const high = Math.max(mark, ...bins.map(r => r.right));
+  const maxBar = Math.max(...bins.map(r => r.estimated_notional));
+  const longs = bins.filter(r => r.side === "long").sort((a, b) => b.right - a.right);
+  const shorts = bins.filter(r => r.side === "short").sort((a, b) => a.left - b.left);
+  const total = rows => rows.reduce((sum, r) => sum + r.estimated_notional, 0);
+  const maxTotal = Math.max(total(longs), total(shorts));
+  const x = price => left + (right - left) * (price - low) / (high - low);
+  const y = (amount, max) => bottom - (bottom - top) * amount / max;
+  const center = r => x((r.left + r.right) / 2);
+  const xMark = x(mark);
+  const ticks = [0, .25, .5, .75, 1].map(t => {
+    const v = y(t, 1);
+    const price = low + t * (high - low);
+    return `<line class="hl-grid" x1="${left}" x2="${right}" y1="${v}" y2="${v}"/>
+      <text x="${left - 8}" y="${v + 4}" text-anchor="end">${usd(maxBar * t)}</text>
+      <text x="${right + 8}" y="${v + 4}">${usd(maxTotal * t)}</text>
+      <text x="${x(price)}" y="${bottom + 19}" text-anchor="middle">${fmtPrice(price, high < 1000 ? 2 : 0)}</text>`;
+  }).join("");
+  const line = (rows, side) => {
+    if (!rows.length) return "";
+    let cumulative = 0;
+    const steps = rows.map(r => {
+      cumulative += r.estimated_notional;
+      return `H${center(r)}V${y(cumulative, maxTotal)}`;
+    }).join("");
+    return `<path class="hl-line ${side}" data-side="${side}" d="M${xMark},${bottom}${steps}" aria-hidden="true"/>`;
+  };
+  return `<div class="hl-legend"><span class="down">■ 多單預估強平</span><span class="up">■ 空單預估強平</span><span class="muted">━ 同方向由標記價起累積</span></div>
+    <p class="hl-scroll-hint note">圖表可左右滑動。</p><div class="hl-chart-scroll">
+      <svg class="hl-chart" viewBox="0 0 820 221" role="group" aria-label="強平金額分布。左軸為單區間金額，右軸為從標記價起累積金額。">
+        <text x="${left}" y="13">區間金額</text><text x="${right}" y="13" text-anchor="end">累積金額</text>
+        ${ticks}
+        ${bins.map(r => {
+          const height = bottom - y(r.estimated_notional, maxBar);
+          const width = Math.max(3, x(r.right) - x(r.left) - 2);
+          const detail = `${r.side === "long" ? "多單" : "空單"} ${fmtPrice(r.price_low, 2)}–${fmtPrice(r.price_high, 2)}・${qty(r.size)}・${usd(r.estimated_notional)}`;
+          return `<g class="hl-bin ${r.side}" data-sync-key="${r.side}-${r.price_low}" tabindex="0" role="img" aria-label="${esc(detail)}">
+            <title>${esc(detail)}</title><rect x="${center(r) - width / 2}" y="${bottom - height}" width="${width}" height="${height}" rx="1"/></g>`;
+        }).join("")}
+        ${line(longs, "long")}${line(shorts, "short")}
+        <line class="hl-mark" x1="${xMark}" x2="${xMark}" y1="${top}" y2="${bottom}"/>
+        <text class="hl-mark-label" x="${Math.min(right - 68, Math.max(left + 68, xMark))}" y="${top - 6}" text-anchor="middle">標記價 ${fmtPrice(mark, 2)}</text>
+      </svg>
+    </div><p class="hl-chart-readout note" aria-live="polite">移到或聚焦色柱以查看價位與金額。</p>`;
+}
+
+function hyperliquidPanel(snapshot, now = Date.now(), symbol = "BTC") {
+  const coverage = snapshot?.coverage || {};
+  const market = snapshot?.market || {};
+  const updated = snapshot?.updated_ms;
+  const hasSnapshot = Number.isFinite(updated) && updated > 0 && Number.isFinite(new Date(updated).getTime());
+  const stale = hasSnapshot && (snapshot.stale || now - updated > (snapshot.stale_after_ms || 180000));
+  const partial = snapshot?.status === "partial" || coverage.discovery_live === false
+    || (Number.isFinite(coverage.valid) && coverage.valid < coverage.checked);
+  let status = "已更新";
+  if (partial) status = "部分資料";
+  if (stale) status = "快照過期";
+  if (!hasSnapshot) status = snapshot?.stale && snapshot?.status !== "等待首次樣本" ? "資料來源暫時無法讀取" : "等待資料";
+  else if (!stale && snapshot.status === "等待公開成交樣本") status = "等待地址樣本";
+  const head = `<span class="chip-muted ${stale || partial ? "warn" : ""}" role="status">${status}</span>`;
+  if (!hasSnapshot) return head + '<p class="note">等待 Hyperliquid 官方資料與鯨魚地址樣本。</p>';
+
+  const positive = n => Number.isFinite(n) && n > 0;
+  const count = n => Number.isInteger(n) && n >= 0 ? fmtPrice(n, 0) : "—";
+  const unit = ["BTC", "ETH", "ZEC"].includes(symbol) ? symbol : "BTC";
+  const qty = n => Number.isFinite(n) && n >= 0 ? fmtPrice(n, n > 0 && n < .01 ? 6 : 2) + " " + unit : "—";
+  const size = row => row.size ?? row.size_btc;
+  const firstOrder = row => row.first_order_size ?? row.first_order_btc;
+  const usd = n => Number.isFinite(n) && n >= 0 ? "$" + fmtBig(n) : "—";
+  const distance = (n, crossed = false) => {
+    if (crossed || n < 0) return "・標記價已越過預估價（待確認）";
+    return Number.isFinite(n) ? "・距標記價 " + n.toFixed(2) + "%" : "";
+  };
+  const levels = (Array.isArray(snapshot.levels) ? snapshot.levels : []).filter(r =>
+    r && ["long", "short"].includes(r.side) && positive(r.price_low) && positive(r.price_high)
+    && r.price_high > r.price_low && positive(size(r))).map(r => ({...r, size: size(r)}));
+  const maxSize = Math.max(1, ...levels.map(r => r.size));
+  const positions = (Array.isArray(snapshot.positions) ? snapshot.positions : []).filter(p =>
+    p && ["long", "short"].includes(p.side) && positive(p.liquidation_price) && positive(size(p)));
+  const largest = rows => rows.slice().sort((a, b) => size(b) - size(a));
+  const bands = (side, label, style) => {
+    const rows = largest(levels.filter(r => r.side === side)).slice(0, 6);
+    return `<section class="hl-side ${style}"><h3>${label}</h3>${rows.length ? `<ul class="hl-levels">
+      ${rows.map(r => `<li><div class="hl-pair num"><b>${fmtPrice(r.price_low, Number.isInteger(r.price_low) ? 0 : 2)}–${fmtPrice(r.price_high, Number.isInteger(r.price_high) ? 0 : 2)}</b><b>${qty(r.size)}</b></div>
+        <div class="hl-bar" aria-hidden="true"><i style="width:${(100 * (r.size / maxSize)).toFixed(1)}%"></i></div>
+        <small class="muted">${usd(r.estimated_notional)}・${count(r.positions)} 筆${distance(r.distance_pct)}</small></li>`).join("")}</ul>`
+      : '<p class="note">樣本內未取得此方向的有效強平價。</p>'}</section>`;
+  };
+  const topPositions = ["long", "short"].flatMap(side => largest(positions.filter(p => p.side === side)).slice(0, 5));
+  const detail = topPositions.length ? `<details class="hl-details" id="hl-whales">
+    <summary>個別鯨魚強平價與持倉量（每側依大小列前五筆）</summary>
+    <ul class="hl-positions">${topPositions.map(p => `<li><span class="${p.side === "long" ? "down" : "up"}">${p.side === "long" ? "多單" : "空單"}</span>
+      <b class="num">${fmtPrice(p.liquidation_price, 2)}</b><b class="num">${qty(size(p))}</b>
+      <small class="muted">${p.margin_mode === "cross" ? "全倉・" : p.margin_mode === "isolated" ? "逐倉・" : ""}${usd(p.estimated_notional)}${distance(p.distance_pct, p.crossed_mark)}${positive(firstOrder(p)) ? "・預估首輪 " + qty(firstOrder(p)) : ""}</small></li>`).join("")}</ul>
+  </details>` : "";
+  const realized = snapshot.realized;
+  const observed = positive(realized?.observed_addresses) ? `近 ${count(realized.window_hours)} 小時抽樣 ${count(realized.observed_addresses)} 個地址
+    ・${count(realized.count)} 筆・<span class="down">多單 ${qty(realized.long_size ?? realized.long_btc)}</span>／<span class="up">空單 ${qty(realized.short_size ?? realized.short_btc)}</span>`
+    : "尚無可用的已發生成交樣本。";
+  const minSize = coverage.min_size ?? coverage.min_size_btc;
+  const minNotional = coverage.min_notional_usd;
+  const threshold = positive(minNotional) ? "US$" + fmtPrice(minNotional, Number.isInteger(minNotional) ? 0 : 2)
+    + (positive(minSize) ? "（約 " + qty(minSize) + "）" : "")
+    : positive(minSize) ? qty(minSize) : "";
+  return `<div class="hl-meta muted">${head}
+    <span>${unit} 標記價 <b class="num">${positive(market.mark_price) ? fmtPrice(market.mark_price, 2) : "—"}</b></span>
+    <span>更新 ${fmtTime(updated)}（台北）</span>
+    <span>候選 ${count(coverage.candidates)}・本輪讀取 ${count(coverage.valid)}／${count(coverage.checked)} 地址</span>
+    <span>追蹤 ${count(coverage.tracked)} 倉・有強平價 ${count(coverage.with_liquidation_px)} 倉</span>
+    ${threshold ? `<span>持倉門檻 ${threshold}</span>` : ""}</div>
+    ${hyperliquidChart(levels, market.mark_price, qty, usd)}
+    <div class="hl-sides">${bands("long", "多單強平（賣壓）", "down")}${bands("short", "空單強平（買壓）", "up")}</div>
+    ${detail}<p class="hl-observed"><b>已發生強平</b>・${observed}</p>
+    <p class="note">強平地圖僅涵蓋追蹤地址。圖表色柱依預估名目金額繪製，累積線從標記價向外加總。下方每側依持倉量列前六區，區間上界不含。實際成交另計。</p>`;
 }
 
 /* 幣種研究 */
