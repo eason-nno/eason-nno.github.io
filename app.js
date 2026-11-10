@@ -937,22 +937,38 @@ async function pageTeam(params) {
   WATCH = ov.items.map((i) => i.symbol);
   let sym = coinKey(params.get("symbol") || (lv.busy ? lv.current.symbol : lastCoin));
   if (!WATCH.includes(sym)) sym = WATCH[0];
+  const selectedReport = params.get("report") || "";
   let A = aset.settings;
   const steps = [["資料分析", ["market", "sentiment", "news", "onchain"]], ["多空辯論", ["bull", "bear", "manager"]], ["交易評估", ["trader"]], ["風險審核", ["aggressive", "conservative", "neutral", "pm"]]];
   // 狀態：進行中的 run 或最近一次完成的 run
-  let run = null, roles = {}, msgs = [], isLive = false;
+  let run = null, roles = {}, msgs = [], isLive = false, reportChoices = [];
   const loadState = async (active = () => true) => {
-    const l = await api("/api/crypto/ai/live");
+    const [l, rs] = await Promise.all([
+      api("/api/crypto/ai/live"),
+      api(`/api/crypto/ai/runs?symbol=${encodeURIComponent(sym)}&limit=300`),
+    ]);
     if (!active()) return;
-    if ((l.busy || ["paused","sync_stale"].includes(l.current?.status)) && l.current.symbol === sym) { isLive = !!l.busy; run = l.current; roles = l.current.roles; msgs = l.current.messages.slice(); return; }
+    reportChoices = rs.filter(r => r.status === "done");
+    if (!selectedReport && (l.busy || ["paused","sync_stale"].includes(l.current?.status)) && sameCoin(l.current?.symbol, sym)) {
+      isLive = !!l.busy; run = l.current; roles = run.roles || {}; msgs = run.messages || [];
+      return;
+    }
     isLive = false;
-    const rs = await api(`/api/crypto/ai/runs?symbol=${sym}&limit=1`);
-    if (rs.length) {
-      const detail = await api(`/api/crypto/ai/runs/${encodeURIComponent(rs[0].id)}`).catch(() => rs[0]);
+    const entry = selectedReport ? reportChoices.find(r => r.id === selectedReport) : rs[0];
+    if (entry) {
+      const detail = await api(`/api/crypto/ai/runs/${encodeURIComponent(entry.id)}`).catch(() => entry);
       if (!active()) return;
       run = detail;
       const f = run.result?.findings || {}, mdl = run.models || {};
-      roles = Object.fromEntries(ROLES.map((r) => [r.key, { status: run.status === "done" || f[r.key] ? "done" : run.status === "failed" ? "failed" : "waiting", finding: f[r.key], model: mdl[r.tier]?.used, score: run.result?.scores?.[r.key] }]));
+      roles = Object.fromEntries(ROLES.map((r) => {
+        const modelKeys = Object.keys(run.result?.slot_usage?.roles?.[r.key]?.models || {});
+        const modelNames = new Set(modelKeys.map(key => key.split(":").slice(1).join(":")).filter(Boolean));
+        return [r.key, {
+          status: run.status === "done" || f[r.key] ? "done" : ["failed", "stopped"].includes(run.status) ? "failed" : "waiting",
+          finding: f[r.key], model: [...modelNames].join("、") || mdl[r.tier]?.used,
+          score: run.result?.scores?.[r.key], elapsed_s: run.result?.timings?.[r.key],
+        }];
+      }));
       msgs = (run.events || []).filter((e) => e.kind === "message").map((e) => e.data);
     } else { run = null; roles = {}; msgs = []; }
   };
@@ -970,19 +986,24 @@ async function pageTeam(params) {
     showSheet(`${smallIc(r.icon || "chat", 16)} ${esc(r.name)}<span class="mchip">${esc(r.team || "")}</span>`, `${st.score != null ? `<div class="chip-muted" style="margin-bottom:8px">多空分數 ${st.score}</div>` : ""}${st.finding ? `<div class="callout" style="margin:0 0 12px"><b>重點</b><span>${esc(st.finding)}</span></div>` : ""}${body}
       <p class="note">${run ? `${esc(baseOf(run.symbol))}・${fmtTime(run.created_at)}（台北）・模型 ${esc(st.model || run?.models?.[r.tier]?.used || "")}` : ""}</p>`);
   };
-  const card = (r) => `<div class="agent" id="ag-${r.key}" tabindex="0" role="button" aria-label="${esc(r.name)}：查看完整報告"><div class="ah"><span class="ai">${ICON[r.icon]}</span><span class="an">${esc(r.name)}</span></div><p>${esc(r.desc)}</p><div class="find" data-f hidden></div><div class="prev" data-p hidden></div><button class="more" data-more hidden>展開全文 ▾</button><div class="af"><span class="pill gray" data-st>等待中</span><span class="tier">${r.tier === "deep" ? "深度思考" : "快速思考"}</span><span class="mchip" data-m></span></div><button type="button" class="more" data-debate="${r.key}">與他辯論（本機）</button></div>`;
+  const card = (r) => `<div class="agent" id="ag-${r.key}" tabindex="0" role="button" aria-label="${esc(r.name)}：查看完整報告"><div class="ah"><span class="ai">${ICON[r.icon]}</span><span class="an">${esc(r.name)}</span></div><p>${esc(r.desc)}</p><div class="find" data-f hidden></div><div class="prev" data-p hidden></div><button class="more" data-more hidden>展開全文 ▾</button><div class="af"><span class="pill gray" data-st>等待中</span><span class="tier">${r.tier === "deep" ? "深度思考" : "快速思考"}</span><span class="mchip" data-m></span></div><button type="button" class="more" data-debate="${r.key}">與他辯論</button></div>`;
   const col = (n) => ROLES.filter((r) => r.col === n).map(card).join("");
+  const strategyDetails = () => selectedReport
+    ? `<p>${esc(run?.result?.new_strategy?.state || "這份報告未記錄策略評估狀態。")}</p>`
+    : strategyManagerHTML(newPaper);
+  const strategyDebate = '<button type="button" class="more" data-debate="strategy">與他辯論</button>';
   $("#app").innerHTML = `
   ${noteHTML()}
   <div style="display:flex;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
     <span class="muted">標的</span><select class="select" id="team-sym" style="height:36px;min-width:150px">${WATCH.map((s) => `<option ${s === sym ? "selected" : ""} value="${s}">${baseOf(s)}・${s}</option>`).join("")}</select>
+    <label class="muted" for="team-report">研究報告</label><select class="select" id="team-report" style="height:36px;max-width:100%"></select>
     <span class="muted" style="margin-left:10px">自動排程</span><span class="chip-muted">${A.schedule_enabled ? `每 ${A.schedule_interval_hours} 小時・${baseOf(A.schedule_symbol)}・下次 ${aset.next_run ? fmtTime(aset.next_run) : "—"}` : "已關閉"}</span>
     <span class="muted">持有期間</span><span class="chip-muted">${holdTxt(A.holding_period_days)}</span>
     <span class="muted">模型</span><span class="chip-muted" id="team-models"></span>
   </div>
-  <section class="card cons-bar"><div class="cons-h"><h2>${ICON.target}目前共識</h2><span id="cons-st"></span></div><div id="cons" class="cons-body"></div></section>
+  <section class="card cons-bar"><div class="cons-h"><h2>${ICON.target}${selectedReport ? "報告共識" : "目前共識"}</h2><span id="cons-st"></span></div><div id="cons" class="cons-body"></div></section>
   <section class="card" style="margin-top:16px;padding:0"><div class="graph" id="graph"><svg class="links" id="links"></svg>
-    <div class="gcol">${col(0)}</div><div class="gcol">${col(1)}</div><div class="gcol">${col(2)}</div><div class="gcol">${col(3)}</div><div class="gcol">${col(4)}</div>${strategyBranchHTML(newPaper)}</div></section>
+    <div class="gcol">${col(0)}</div><div class="gcol">${col(1)}</div><div class="gcol">${col(2)}</div><div class="gcol">${col(3)}</div><div class="gcol">${col(4)}</div>${strategyBranchHTML(newPaper, strategyDetails())}</div></section>
   <p class="note" style="margin:8px 2px 0">點任一角色卡可展開完整報告（Markdown 全文；辯論角色依輪次列出）。</p>
   <section class="card" style="margin-top:12px;padding:0"><div class="stepper" id="stepper"></div></section>
   <section class="card" style="margin-top:12px"><div class="prog">
@@ -997,12 +1018,27 @@ async function pageTeam(params) {
   const stepCard = $("#stepper").closest("section"), progressCard = $(".prog").closest("section");
   $("#app").prepend(stepCard, progressCard);
   const strategyCard = $("#ag-new-strategy");
-  strategyCard.insertAdjacentHTML("beforeend",`<button type="button" class="more" data-debate="strategy">與他辯論（本機）</button>`);
+  strategyCard.insertAdjacentHTML("beforeend", strategyDebate);
   document.querySelectorAll("[data-debate]").forEach(el=>{ el.onclick=e=>{e.stopPropagation();showRoleDebate(el.dataset.debate,run?.id)}; el.onkeydown=e=>e.stopPropagation(); });
-  strategyCard.onclick = () => showSheet("策略測試經理", strategyManagerHTML(newPaper));
+  strategyCard.onclick = () => showSheet("策略測試經理", strategyDetails());
   strategyCard.onkeydown = e => { if(e.key === "Enter" || e.key === " ") { e.preventDefault(); strategyCard.click(); } };
   $("#team-sym").onchange = (e) => { location.hash = `#/team?symbol=${e.target.value}`; };
+  const reportSelect = $("#team-report");
+  reportSelect.onchange = () => {
+    const query = new URLSearchParams({ symbol: sym });
+    if (reportSelect.value) query.set("report", reportSelect.value);
+    location.hash = "#/team?" + query;
+  };
+  let previousChoices = "";
   const render = () => {
+    const choices = '<option value="">即時／最新研究</option>' + reportChoices.map(r =>
+      `<option value="${esc(r.id)}">${esc(fmtTime(r.created_at))}（台北）・${esc(TRIG[r.trigger] || r.trigger)}</option>`
+    ).join("");
+    if (choices !== previousChoices) {
+      reportSelect.innerHTML = choices;
+      reportSelect.value = reportChoices.some(r => r.id === selectedReport) ? selectedReport : "";
+      previousChoices = choices;
+    }
     const done = ROLES.filter((r) => roles[r.key]?.status === "done").length;
     ROLES.forEach((r) => {
       const st = roles[r.key] || { status: "waiting" }, el = $("#ag-" + r.key); if (!el) return;
@@ -1012,8 +1048,10 @@ async function pageTeam(params) {
       const f = $("[data-f]", el); f.hidden = !st.finding; f.textContent = (st.score != null ? `【${st.score}】` : "") + (st.finding || "");
       const ft = plain(fullText(r.key)), pv = $("[data-p]", el), mb = $("[data-more]", el);
       pv.hidden = !ft; pv.textContent = (st.score != null ? `【${st.score}】` : "") + ft; mb.hidden = !ft; if (ft) f.hidden = true;
-      $("[data-m]", el).textContent = st.model || (run?.models?.[r.tier]?.used || run?.models?.[r.tier]?.model || "");
-      $("[data-m]", el).hidden = !$("[data-m]", el).textContent;
+      const model = $("[data-m]", el);
+      model.textContent = st.model || run?.models?.[r.tier]?.used || run?.models?.[r.tier]?.model || "";
+      if (st.status === "done" && Number.isFinite(st.elapsed_s)) model.textContent += `（${Math.round(st.elapsed_s)} 秒）`;
+      model.hidden = !model.textContent;
     });
     $("#stepper").innerHTML = steps.map(([nm, ks], i) => { const all = ks.every((k) => roles[k]?.status === "done"), any = ks.some((k) => roles[k]?.status === "running");
       return `${i ? `<div class="step-line ${all ? "done" : ""}"></div>` : ""}<div class="step ${all ? "done" : any ? "active" : ""}"><div class="c">${all ? "✓" : i + 1}</div><span>${nm}</span></div>`; }).join("") + `<div class="step-count"><b>${done}</b> / ${ROLES.length} 已完成</div>`;
@@ -1022,14 +1060,17 @@ async function pageTeam(params) {
     $("#pg-t").innerHTML = `${done} / ${ROLES.length} 已完成${run ? "・" + (isLive ? `執行中${rnm ? "・" + esc(rnm) : ""}・已執行 <span class="num" data-elapsed="${esc(run.started_at || run.created_at)}">${fmtDur(Date.now() - new Date(run.started_at || run.created_at))}</span>${lv?.last_issue ? `・<span class="tc-issue">${esc(lv.last_issue.text)}</span>` : ""}` : run.status === "done" ? `完成於 ${fmtTime(run.finished_at)}・耗時 ${Math.round(run.duration_s)} 秒${run.resumed ? `・補完成於 ${fmtTime(run.resumed.at)}` : ""}` : run.status === "failed" ? "失敗：" + esc(friendlyErr(run.error)) : run.status === "paused" ? "研究已暫停，進度已保存" : run.status === "sync_stale" ? "超過10分鐘未同步，研究狀態待確認" : "") : ""}`;
     $("#pg-bar").style.width = pct + "%"; $("#pg-pct").textContent = pct + "%"; $("#ring").setAttribute("stroke-dasharray", `${(pct / 100) * 113} 113`);
     const c = run?.calls; $("#pg-calls").textContent = c ? "呼叫次數 " + fmtCalls(c) + (c.reconstructed ? "＊" : "") : ""; $("#pg-calls").title = callsTitle(c);
-    const m = run?.models; $("#team-models").textContent = m ? `快速 ${m.quick.used || m.quick.model}・深度 ${m.deep.used || m.deep.model}` : `快速 ${A.quick.model}・深度 ${A.deep.model}`; $("#team-models").title = m ? `快速：${m.quick.key}；深度：${m.deep.key}` : "";
+    const m = run?.models; $("#team-models").textContent = m?.quick && m?.deep ? `快速 ${m.quick.used || m.quick.model}・深度 ${m.deep.used || m.deep.model}` : `快速 ${A.quick.model}・深度 ${A.deep.model}`; $("#team-models").title = m?.quick && m?.deep ? `快速：${m.quick.key}；深度：${m.deep.key}` : "";
     const dec = run?.result?.decision;
     if (dec) { const d = DIRS[dec.decision];
       $("#cons-st").innerHTML = `<span class="pill ${d.pill}">${d.t}</span>`;
       $("#cons").innerHTML = `<div class="cons-dir"><b class="${d.c}" style="font-size:24px">${d.t}</b><span class="muted">信心 ${dec.confidence}/100・風險 ${esc(dec.risk_level)}</span></div>
         <div class="lv cons-lv"><div><small>進場</small><b class="num">${fmtLv(dec.entry_price)}</b></div><div><small>停損</small><b class="num down">${fmtLv(dec.stop_loss)}</b></div><div><small>停利</small><b class="num up">${fmtLv(dec.take_profit)}</b></div><div><small>部位</small><b class="num">${dec.position_size_pct ?? "—"}%</b></div></div>
         <p class="ai-sum cons-sum">${esc(dec.executive_summary)}</p><a class="btn ghost-mint cons-link" href="#/report/${encodeURIComponent(run.id)}">完整報告 ›</a>`;
-    } else { $("#cons-st").innerHTML = `<span class="pill mid">${isLive ? "分析中" : "等待分析"}</span>`; $("#cons").innerHTML = `<p class="muted" style="margin:0;font-size:13px">${isLive ? "投資組合經理完成最終決策後，會在這裡顯示做多 / 做空 / 觀望、進場、停損與停利。" : run?.status === "failed" ? "上次分析失敗：" + esc(friendlyErr(run.error)) : "尚無共識。"}</p>`; }
+    } else {
+      $("#cons-st").innerHTML = `<span class="pill mid">${isLive ? "分析中" : run?.status === "stopped" ? "已停止" : "等待分析"}</span>`;
+      $("#cons").innerHTML = `<p class="muted" style="margin:0;font-size:13px">${isLive ? "投資組合經理完成最終決策後，會在這裡顯示做多 / 做空 / 觀望、進場、停損與停利。" : selectedReport && !run ? "這份報告已不在清單中，請選擇其他報告。" : run?.status === "failed" ? "上次分析失敗：" + esc(friendlyErr(run.error)) : "尚無共識。"}</p>`;
+    }
     requestAnimationFrame(draw);
   };
   $("#graph").addEventListener("click", (e) => { const a = e.target.closest(".agent"); if (a && a.id !== "ag-new-strategy") openRole(a.id.replace("ag-", "")); });
@@ -1041,11 +1082,11 @@ async function pageTeam(params) {
     await loadState(active);
     if (!active()) return;
     A = settings.settings;
-    if (latestPaper !== newPaper) {
+    if (!selectedReport && latestPaper !== newPaper) {
       newPaper = latestPaper;
       const temp = document.createElement("template"); temp.innerHTML = strategyBranchHTML(newPaper);
       const next = $("#ag-new-strategy", temp.content);
-      if (next) patchHTML(strategyCard, next.innerHTML + '<button type="button" class="more" data-debate="strategy">與他辯論（本機）</button>');
+      if (next) patchHTML(strategyCard, next.innerHTML + strategyDebate);
       const debate = $("[data-debate]", strategyCard);
       if (debate) { debate.onclick = e => { e.stopPropagation(); showRoleDebate("strategy", run?.id); }; debate.onkeydown = e => e.stopPropagation(); }
     }
@@ -1224,19 +1265,30 @@ async function pagePaper() {
     if (visible) ch.timeScale().setVisibleLogicalRange(visible);
   });
 }
-async function pageReports() {
+async function pageReports(params) {
   setTitle("研究報告", "AI 團隊・繁體中文");
-  const load = () => Promise.all([api("/api/crypto/ai/runs?limit=200"), J("ai-usage.json").catch(() => null)]);
-  const layout = (runs, usage) => `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${runs.length} 份</span></div></div>
+  const load = () => Promise.all([api("/api/crypto/ai/runs?limit=300"), J("ai-usage.json").catch(() => null)]);
+  const requestedPage = Number(params.get("page"));
+  const layout = (runs, usage) => {
+    const pageSize = 30, total = Math.max(1, Math.ceil(runs.length / pageSize));
+    const page = Number.isInteger(requestedPage) ? Math.max(1, Math.min(requestedPage, total)) : 1;
+    const visible = runs.slice((page - 1) * pageSize, page * pageSize);
+    const pager = total > 1 ? `<nav class="trade-pager" aria-label="研究報告分頁">
+      ${page > 1 ? `<a class="btn sm" href="#/reports?page=${page - 1}">上一頁</a>` : ""}
+      <span class="muted">第 ${page} / ${total} 頁</span>
+      ${page < total ? `<a class="btn sm" href="#/reports?page=${page + 1}">下一頁</a>` : ""}
+    </nav>` : "";
+    return `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${runs.length} 份</span></div></div>
     ${runs.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="第 1 至 5 組，含失敗重試">呼叫次數（依組別）</th><th>耗時</th><th></th></tr></thead><tbody>
-    ${runs.map((r) => { const d = DIRS[r.decision]; const m = r.models || {};
+    ${visible.map((r) => { const d = DIRS[r.decision] || DIRS.WAIT; const m = r.models || {};
       return `<tr class="run-row" data-sync-key="${esc(r.id)}"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
-        <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "sync_stale" ? `<span class="pill gray">同步中斷</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
+        <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "stopped" ? `<span class="pill gray">已停止</span>` : r.status === "sync_stale" ? `<span class="pill gray">同步中斷</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
         <td class="num">${r.status === "done" ? `${fmtLv(r.entry)} / <span class="down">${fmtLv(r.stop)}</span> / <span class="up">${fmtLv(r.take_profit)}</span>` : "—"}</td>
         <td class="muted num" style="font-size:12px">${m.quick ? `${esc(m.quick.used)}（槽位 ${m.quick.key_slot ?? "—"}）<br>${esc(m.deep.used)}（槽位 ${m.deep.key_slot ?? "—"}）${m.quick.fallback_reason ? '<br><span class="warn">快速已切換備援</span>' : ""}${m.deep.fallback_reason ? '<br><span class="warn">深度已切換備援</span>' : ""}` : "—"}</td>
         <td class="num" style="white-space:nowrap" title="${esc(callsTitle(r.calls))}">${fmtCalls(r.calls)}${r.calls?.reconstructed ? '<span class="warn" title="原始執行的呼叫次數由紀錄還原">＊</span>' : ""}</td><td class="num">${r.duration_s ? Math.round(r.duration_s) + " 秒" : "—"}</td>
         <td class="c">${r.status === "done" ? `<a class="ok" href="#/report/${encodeURIComponent(r.id)}">查看</a>` : ""}${r.pdf_url ? `・<a class="ok" target="_blank" href="${esc(r.pdf_url)}">PDF</a>` : ""}</td></tr>`; }).join("")}
-    </tbody></table>` : `<div class="empty-state" style="height:180px">${ICON.report}<b>尚未執行 AI 分析</b><small>每次 AI 團隊分析完成都會產生一份繁體中文報告（含 PDF），列在這裡。</small></div>`}</section>`;
+    </tbody></table>` : `<div class="empty-state" style="height:180px">${ICON.report}<b>尚未執行 AI 分析</b><small>每次 AI 團隊分析完成都會產生一份繁體中文報告（含 PDF），列在這裡。</small></div>`}${pager}</section>`;
+  };
   const view = location.hash, data = await load();
   if (view !== location.hash) return;
   $("#app").innerHTML = layout(...data);
@@ -1400,7 +1452,7 @@ async function route() {
     else if (path === "/paper") { renderNav("paper"); await pagePaper(); }
     else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper(); }
     else if (path === "/paper/test2") { renderNav("paper"); await pageNewPaper("test2"); }
-    else if (path === "/reports") { renderNav("reports"); await pageReports(); }
+    else if (path === "/reports") { renderNav("reports"); await pageReports(params); }
     else if ((m = path.match(/^\/report\/(.+)$/))) { renderNav("reports"); await pageReport(decodeURIComponent(m[1])); }
     else if (path === "/settings") { renderNav("settings"); await pageSettings(); }
     else { location.hash = "#/"; }
