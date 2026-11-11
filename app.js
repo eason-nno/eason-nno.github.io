@@ -460,7 +460,8 @@ let WATCH = ["BTCUSDC", "ETHUSDC", "ZECUSDC"];
 let lastCoin = coinKey(localStorage.getItem("lastCoin") || "BTCUSDC");
 function renderNav(active) {
   const items = [["home", "#/", "總覽", ICON.home], ["coin", `#/coin/${lastCoin}`, "幣種研究", ICON.coin], ["team", "#/team", "AI 團隊", ICON.team],
-    ["paper", "#/paper", "模擬交易", ICON.paper], ["reports", "#/reports", "研究報告", ICON.report]];
+    ["paper", "#/paper", "模擬交易", ICON.paper], ["reports", "#/reports", "研究報告", ICON.report],
+    ["training", "#/training", "訓練結果", ICON.bars]];
   $("#nav").innerHTML = items.map(([k, h, t, ic]) => k === "paper" ?
     `<details class="nav-dropdown ${active === k ? "active" : ""}"><summary>${ic}<span>${t}</span><span class="chevron">▾</span></summary><div class="nav-menu"><a href="#/paper" ${location.hash === "#/paper" ? 'aria-current="page"' : ""}>AI 團隊策略</a><a href="#/paper/new" ${location.hash === "#/paper/new" ? 'aria-current="page"' : ""}>測試1號</a><a href="#/paper/test2" ${location.hash === "#/paper/test2" ? 'aria-current="page"' : ""}>測試2號</a></div></details>` :
     `<a href="${h}" class="${k === active ? "active" : ""}" ${k === active ? 'aria-current="page"' : ""}>${ic}<span>${t}</span></a>`).join("") +
@@ -1325,8 +1326,8 @@ async function pagePaper() {
 }
 const catalogFile = scope => `runs/catalog-${scope}.json`;
 const REPORT_PAGE_SIZE = 30;
-function reportPageRange(count, requested) {
-  const pages = Math.max(1, Math.ceil(count / REPORT_PAGE_SIZE));
+function reportPageRange(count, requested, pageSize) {
+  const pages = Math.max(1, Math.ceil(count / pageSize));
   return {count, pages, page: Number.isInteger(requested) ? Math.max(1, Math.min(requested, pages)) : 1};
 }
 function reportPager({page, pages}, route, label) {
@@ -1336,16 +1337,16 @@ function reportPager({page, pages}, route, label) {
     ${page < pages ? `<a class="btn sm" href="${route}?page=${page + 1}">下一頁</a>` : ""}
   </nav>` : "";
 }
-async function catalogPage(scope, requested, legacy) {
+async function catalogPage(scope, requested, legacy, pageSize = REPORT_PAGE_SIZE) {
   const catalog = await J(catalogFile(scope)).catch(() => null);
   if (!catalog) {
     const rows = await legacy();
-    const range = reportPageRange(rows.length, requested);
-    return {...range, rows: rows.slice((range.page - 1) * REPORT_PAGE_SIZE, range.page * REPORT_PAGE_SIZE)};
+    const range = reportPageRange(rows.length, requested, pageSize);
+    return {...range, latest: rows[0], rows: rows.slice((range.page - 1) * pageSize, range.page * pageSize)};
   }
-  const range = reportPageRange(catalog.total, requested);
-  if (range.page === 1) return {...range, rows: catalog.first};
-  let skip = (range.page - 1) * REPORT_PAGE_SIZE, remaining = REPORT_PAGE_SIZE;
+  const range = {...reportPageRange(catalog.total, requested, pageSize), latest: catalog.first[0]};
+  let skip = (range.page - 1) * pageSize, remaining = Math.min(pageSize, catalog.total - skip);
+  if (skip + remaining <= catalog.first.length) return {...range, rows: catalog.first.slice(skip, skip + remaining)};
   const requests = [];
   for (const {file, rev, count} of catalog.parts) {
     if (!remaining) break;
@@ -1368,7 +1369,7 @@ async function pageReports(params) {
   const layout = (result, usage, status) => {
     const visible = result.rows.map(row => displayRun(row, status));
     const pager = reportPager(result, "#/reports", "研究報告分頁");
-    return `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><a class="btn sm" href="#/reports/training">訓練結果</a><span class="chip-muted">共 ${result.count} 份</span></div></div>
+    return `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${result.count} 份</span></div></div>
     ${visible.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="第 1 至 5 組，含失敗重試">呼叫次數（依組別）</th><th>耗時</th><th></th></tr></thead><tbody>
     ${visible.map((r) => { const d = DIRS[r.decision] || DIRS.WAIT; const m = r.models || {};
       return `<tr class="run-row" data-sync-key="${esc(r.id)}"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
@@ -1389,41 +1390,72 @@ async function pageReports(params) {
 }
 const REPORT_ORDER = [["pm", "投資組合經理｜最終決策"], ["trader", "交易員｜交易計畫"], ["manager", "研究經理｜研究結論"], ["market", "技術分析師"], ["sentiment", "情緒分析師"], ["news", "加密新聞分析師"], ["onchain", "鏈上 / 衍生品分析師"], ["bull", "多頭研究員"], ["bear", "空頭研究員"], ["aggressive", "積極派風控"], ["conservative", "保守派風控"], ["neutral", "中立派風控"]];
 const TRAINING_HOURS = [1, 4, 24];
+const TRAINING_PAGE_SIZE = 8;
 const TRAINING_STATES = {running:"訓練中", complete:"訓練完成", no_new_data:"等待新樣本", insufficient_data:"完整樣本不足", timeout:"訓練逾時", failed:"訓練失敗", interrupted:"訓練中斷"};
 const trainingPct = (value, digits = 2) => Number.isFinite(value) ? (value * 100).toFixed(digits) + "%" : "—";
 const trainingScore = value => Number.isFinite(value) ? value.toFixed(4) : "—";
+const trainingCount = value => Number.isInteger(value) ? value.toLocaleString("en-US") : "—";
+const trainingDate = value => value ? fmtClock(new Date(value)).slice(0, 16) : "—";
 
-function trainingPageHTML(data) {
+function trainingMetricsHTML(data) {
   const job = data || {};
-  const rows = TRAINING_HOURS.map(hours => {
-    const period = job.horizons?.[hours] || {};
-    const candidate = period.candidate;
+  const cards = TRAINING_HOURS.map(hours => {
+    const period = job.horizons?.[hours] || (hours === 24 ? job : {});
+    const candidate = period.candidate || {};
     const adopted = period.adopted_version;
-    const result = candidate ? candidate.version === adopted ? "已採用" : candidate.passed ? "通過，待採用" : "候選未通過" : TRAINING_STATES[period.state] || "等待訓練";
-    return `<tr><th scope="row">${hours} 小時</th><td>${esc(result)}${candidate ? `<br><small class="muted">${esc(candidate.version)}</small>` : ""}</td>
-      <td class="num">${candidate ? `${esc(candidate.train_count)}／${esc(candidate.valid_count)}` : "—"}</td>
-      <td class="num">${candidate ? `${trainingScore(candidate.scores?.brier)}／${trainingScore(candidate.baseline?.brier)}` : "—"}</td>
-      <td class="num">${candidate ? `${trainingPct(candidate.scores?.drawdown)}／${trainingPct(candidate.baseline?.drawdown)}` : "—"}</td>
-      <td class="num">${esc(adopted || "—")}</td></tr>`;
+    const active = !!candidate.version && candidate.version === adopted;
+    const label = active ? "已採用" : candidate.version
+      ? (candidate.passed === false ? "未採用・未通過驗證" : "未採用") : "尚無資料";
+    return `<article class="training-period"><div class="training-period-head"><h3>${hours} 小時</h3><span class="pill ${active ? "low" : "gray"}">${label}</span></div>
+      <dl class="training-metrics"><div><dt>訓練／驗證筆數</dt><dd>${trainingCount(candidate.train_count)}／${trainingCount(candidate.valid_count)}</dd></div>
+      <div><dt>Brier</dt><dd>${trainingScore(candidate.scores?.brier)}</dd></div><div><dt>最大回撤</dt><dd>${trainingPct(candidate.scores?.drawdown)}</dd></div></dl>
+      ${candidate.version || adopted ? `<div class="training-meta">${candidate.version ? `模型 ${esc(candidate.version)}` : ""}${adopted && !active ? `${candidate.version ? "・" : ""}已採用 ${esc(adopted)}` : ""}</div>` : ""}</article>`;
   }).join("");
-  return `<section class="card"><div class="card-h"><h2>${ICON.report}訓練結果</h2><div class="right"><a class="btn sm" href="#/reports">研究報告</a></div></div>
-    <p>BTCUSDC · LightGBM <span class="chip-muted">${esc(TRAINING_STATES[job.state] || "等待訓練")}</span></p>
-    <p class="note">本輪開始 ${fmtTime(job.started_at)}・完成 ${fmtTime(job.finished_at)}・下輪 ${fmtTime(job.next_at)}（台北）${Number.isFinite(job.elapsed_s) ? `・耗時 ${job.elapsed_s.toFixed(2)} 秒` : ""}</p>
-    <div style="overflow-x:auto"><table class="tbl" style="min-width:680px"><thead><tr><th>週期</th><th>最新候選</th><th>訓練／驗證筆數</th><th>Brier（候選／基準）</th><th>最大回撤（候選／基準）</th><th>採用版本</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="note">Brier 越低表示機率估計越準。最大回撤採無槓桿收盤回放。排程為台北時間 00:17、06:17、12:17、18:17。</p>
+  return `<section class="card training-section"><div class="card-h"><h2>${ICON.bars}訓練結果</h2><span class="chip-muted">BTCUSDC・LightGBM</span></div>
+    <p class="training-meta"><span>${esc(TRAINING_STATES[job.state] || "尚無訓練資料")}</span>${job.finished_at ? `<span>最近完成 ${trainingDate(job.finished_at)}（台北）</span>` : ""}${job.next_at ? `<span>下輪 ${trainingDate(job.next_at)}（台北）</span>` : ""}</p>
+    <div class="training-grid">${cards}</div>
   </section>`;
 }
 
-async function pageTraining() {
-  setTitle("訓練結果", "BTCUSDC・1／4／24 小時");
-  const view = location.hash;
-  const render = async (active) => {
-    const status = await J("status.json");
-    if (view !== location.hash || (active && !active())) return;
-    patchHTML($("#app"), trainingPageHTML(status.market_training));
+function trainingForecastHTML(latest, report) {
+  const snapshot = report?.result?.market_training;
+  const periods = snapshot?.horizons || (snapshot ? {24: snapshot} : {});
+  const messages = {waiting: "等待模型", waiting_market: "等待完整行情", unavailable: "預測未能取得"};
+  const cards = TRAINING_HOURS.map(hours => {
+    const item = periods[hours];
+    const p = item?.forecast;
+    const hasForecast = (!item?.state || item.state === "ready") && [p?.direction, p?.rise, p?.fall].every(Number.isFinite);
+    const label = hasForecast ? (item.shadow === false ? "已採用" : item.shadow === true ? "候選・未採用" : "採用狀態未知") : "尚無資料";
+    return `<article class="training-period"><div class="training-period-head"><h3>${hours} 小時</h3><span class="pill ${hasForecast && item.shadow === false ? "low" : "gray"}">${label}</span></div>
+      ${hasForecast ? `<dl class="training-metrics"><div><dt>收高機率</dt><dd>${trainingPct(p.direction, 1)}</dd></div>
+      <div><dt>漲幅 P80</dt><dd>${trainingPct(p.rise)}</dd></div><div><dt>跌幅 P80</dt><dd>${trainingPct(p.fall)}</dd></div></dl>
+      <div class="training-meta">${item.anchor_ms ? `基準 ${fmtTime(item.anchor_ms)}（台北）` : "基準時間未知"}${Number.isFinite(item.anchor_price) ? `・${fmtPrice(item.anchor_price, 2)} USDC` : ""}</div>
+      ${item.version ? `<div class="training-meta">模型 ${esc(item.version)}</div>` : ""}` : messages[item?.state] ? `<p class="training-meta">${messages[item.state]}</p>` : ""}</article>`;
+  }).join("");
+  return `<section class="card training-section"><div class="card-h"><h2>最新 BTC 報告預測</h2>${latest ? `<a class="ok" href="#/report/${encodeURIComponent(latest.id)}">${trainingDate(latest.created_at)}（台北）</a>` : ""}</div>
+    ${latest && !report ? '<p class="training-meta">報告明細尚未載入。</p>' : ""}<div class="training-grid">${cards}</div></section>`;
+}
+
+function trainingHistoryHTML(history) {
+  const rows = history.rows.map(row => `<li data-sync-key="${esc(row.id)}"><span class="num">${trainingDate(row.created_at)}（台北）</span><a class="ok" href="#/report/${encodeURIComponent(row.id)}">查看報告</a></li>`).join("");
+  return `<section class="card training-section"><div class="card-h"><h2>BTC 歷史報告</h2><span class="chip-muted">共 ${history.count} 份</span></div>
+    ${rows ? `<ul class="training-history">${rows}</ul>` : '<p class="training-meta">尚無 BTC 報告。</p>'}${reportPager(history, "#/training", "BTC 歷史報告分頁")}</section>`;
+}
+
+async function pageTraining(params) {
+  setTitle("訓練結果");
+  let active = true;
+  pageCleanup.push(() => { active = false; });
+  const loadHistory = () => catalogPage("training", Number(params.get("page")), async () =>
+    (await api("/api/crypto/ai/runs?symbol=BTCUSDC&limit=300")).filter(row => row.status === "done"), TRAINING_PAGE_SIZE);
+  const render = async () => {
+    const [status, history] = await Promise.all([J("status.json"), loadHistory()]);
+    if (!active) return;
+    const report = history.latest ? await api(`/api/crypto/ai/runs/${encodeURIComponent(history.latest.id)}`).catch(() => null) : null;
+    if (active) patchHTML($("#app"), trainingMetricsHTML(status.market_training) + trainingForecastHTML(history.latest, report) + trainingHistoryHTML(history));
   };
   await render();
-  onData(["status.json"], render);
+  if (active) onData(["status.json", catalogFile("training"), "runs.json"], render);
 }
 
 function marketTrainingHTML(snapshot) {
@@ -1443,7 +1475,7 @@ function marketTrainingHTML(snapshot) {
     ${(review.accounts || []).map(a => `<p class="note">策略測試經理・${esc(a.name)}：已平倉 ${esc(a.closed)} 筆，獲利 ${esc(a.wins)} 筆，淨損益 ${fmtPrice(a.pnl, 2)} USDC。</p>`).join("")}
     ${(review.examples || []).map(x => `<p class="note"><a class="ok" href="#/report/${encodeURIComponent(x.report_id)}">${fmtTime(x.anchor_ms)} 複盤案例</a>・24 小時漲跌 ${trainingPct(x.return)}</p>`).join("")}</details>` : "";
   const title = periods.map(([hours]) => esc(hours)).join("／");
-  return `<section class="card" style="margin-top:16px"><div class="card-h"><h2>BTC 市場模型｜${title} 小時預測</h2><div class="right"><a class="btn sm" href="#/reports/training">訓練結果</a></div></div>
+  return `<section class="card" style="margin-top:16px"><div class="card-h"><h2>BTC 市場模型｜${title} 小時預測</h2><div class="right"><a class="btn sm" href="#/training">訓練結果</a></div></div>
     ${ready ? `<p class="note">以 ${fmtTime(ready.anchor_ms)}（台北）收盤價 <b>${fmtPrice(ready.anchor_price, 2)} USDC</b> 為基準。LightGBM 預測供並行觀察。</p>` : ""}
     <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>週期</th><th>收高機率</th><th>最大漲／跌幅 P80</th><th>Brier</th><th>模型</th></tr></thead><tbody>${forecast}</tbody></table></div>${details}</section>`;
 }
@@ -1603,7 +1635,7 @@ async function route() {
     else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper("test1", params); }
     else if (path === "/paper/test2") { renderNav("paper"); await pageNewPaper("test2", params); }
     else if (path === "/reports") { renderNav("reports"); await pageReports(params); }
-    else if (path === "/reports/training") { renderNav("reports"); await pageTraining(); }
+    else if (path === "/training" || path === "/reports/training") { renderNav("training"); await pageTraining(params); }
     else if ((m = path.match(/^\/report\/(.+)$/))) { renderNav("reports"); await pageReport(decodeURIComponent(m[1])); }
     else if (path === "/settings") { renderNav("settings"); await pageSettings(); }
     else { location.hash = "#/"; }
