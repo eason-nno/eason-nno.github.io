@@ -25,7 +25,7 @@ function strategyManagerHTML(P) {
   if(!P)return '<p class="note">測試1號狀態尚未推送。</p>';
   const m=P.manager || {}, d=P.decisions?.[0], cfg=P.settings || {}, binding=P.binding;
   const backup=cfg.strategy_backup?.model||cfg.model||"gemini-3.5-flash-lite";
-  const luna=cfg.hourly_luna_only?"整點":"每小時優先";
+  const luna=cfg.hourly_luna_only?"00、30 分":"每半小時優先";
   return `<p>${esc(m.message || "等待初始化")}</p><dl class="manager-details"><dt>評估 API</dt><dd>${cfg.hourly_luna_active ? esc(luna)+"用 GPT-6 Luna（"+esc(cfg.hourly_luna_thinking || "high")+"），失敗由 "+esc(backup)+" 補評" : "第 4 組 Gemini"}</dd><dt>例行主模型</dt><dd>${esc(cfg.model || "gemini-3.5-flash-lite")}</dd><dt>例行備援模型</dt><dd>${esc(cfg.fallback_model || "gemini-3.1-flash-lite")}</dd><dt>評估狀態</dt><dd>${m.busy ? "評估中" : esc(m.message || "等待")}</dd><dt>最近評估</dt><dd>${m.last_evaluated ? fmtTime(m.last_evaluated*1000) : "尚未評估"}${m.model ? `・${esc(m.model)}` : ""}</dd><dt>報告標的</dt><dd>${binding ? esc(binding.symbol) : "等待研究報告"}</dd><dt>最新決策</dt><dd>${d ? `${esc(NEW_ACTIONS[d.action] || d.action)}・${fmtTime(d.created_ms)}<br>${esc(d.reason)}` : "尚無決策紀錄"}</dd></dl>${binding ? `<a class="ok" href="#/report/${encodeURIComponent(binding.run_id)}">對應研究報告 ›</a>` : ""}<p class="note">每五分鐘只評估當前報告標的，先對照上一份同標的研究與各自帳戶實際結果；已填 RPD 時按預算降頻。報告最多沿用兩小時；過期後暫停新增曝險，既有持倉仍依最新行情評估，停利、資金費及強平持續運作。兩個測試共用評估，分別記錄結果。</p>`;
 }
 function previousReviewHTML(review, link = true) {
@@ -66,7 +66,7 @@ function strategyReportsHTML(result, account) {
     const action = NEW_ACTIONS[report.action] || report.action || "—";
     const status = {done: "已處理", failed: "評估失敗", skipped: "未執行"}[report.status] || "未執行";
     return `<details class="din" data-sync-key="${esc(report.id)}" data-report-file="${esc(report.file || "")}" data-report-rev="${esc(report.detail_rev || "")}">
-      <summary>${esc(baseOf(report.symbol))}・${fmtTime(report.created_ms)}・${esc(status)}・${esc(action)}・${esc(report.model || "模型 —")}${report.source === "hourly_fallback" ? "・整點補評" : ""}</summary>
+      <summary>${esc(baseOf(report.symbol))}・${fmtTime(report.created_ms)}・${esc(status)}・${esc(action)}・${esc(report.model || "模型 —")}${report.source === "hourly_fallback" ? "・備援補評" : ""}</summary>
       <div class="strategy-report-body" data-sync-key="${esc(report.detail_rev || report.id)}">${report.file ? "" : strategyReportBody(report)}</div></details>`;
   }).join("");
   return `<section class="card new-section" id="strategy-reports"><div class="card-h"><h2>策略測試經理報告</h2><span class="chip-muted">共 ${result.count} 份</span></div>
