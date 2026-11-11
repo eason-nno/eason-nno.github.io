@@ -1397,6 +1397,29 @@ const trainingScore = value => Number.isFinite(value) ? value.toFixed(4) : "—"
 const trainingCount = value => Number.isInteger(value) ? value.toLocaleString("en-US") : "—";
 const trainingDate = value => value ? fmtClock(new Date(value)).slice(0, 16) : "—";
 
+function trainingComparisonHTML(metrics) {
+  const variants = [["baseline", "歷史收高率"], ["raw", "原始 LightGBM"], ["calibrated", "校準後"], ["incumbent", "已採用版本"]];
+  return `<table class="tbl training-comparison"><thead><tr><th scope="col">比較版本</th><th scope="col">Brier</th><th scope="col">最大回撤</th></tr></thead><tbody>
+    ${variants.filter(([key]) => metrics[key]).map(([key, label]) => `<tr><th scope="row">${label}</th><td class="num">${trainingScore(metrics[key].brier)}</td><td class="num">${trainingPct(metrics[key].drawdown)}</td></tr>`).join("")}
+    </tbody></table><p class="training-meta">P80 實際涵蓋率・漲幅 ${trainingPct(metrics.p80?.rise, 1)}／跌幅 ${trainingPct(metrics.p80?.fall, 1)}</p>`;
+}
+
+function trainingAssessmentHTML(candidate, forward) {
+  const validation = candidate.validation;
+  if (!validation && !forward) return "";
+  const holdout = validation?.holdout;
+  const variant = candidate.variant === "calibrated" ? "校準後" : "原始 LightGBM";
+  const forwardState = {observing: "觀察中", adopted: "已採用", not_adopted: "未採用"};
+  return `<details class="training-assessment"><summary>回測比較與前瞻觀察</summary>
+    ${holdout ? `<p class="training-meta">較早回測通過 ${trainingCount(validation.rolling_passed)}／${trainingCount(validation.rolling?.length)} 段・候選為 ${variant}・校準 ${trainingCount(validation.calibration_count)} 筆</p>
+      <p class="training-meta">保留驗證 ${fmtTime(holdout.start_ms)} 至 ${fmtTime(holdout.end_ms)}（台北）・${trainingCount(holdout.count)} 筆</p>
+      ${trainingComparisonHTML(holdout.metrics)}` : ""}
+    ${forward ? `<p class="training-meta">前瞻模型 ${esc(forward.version)}・${forwardState[forward.state] || "等待觀察"}${forward.historical_passed === false ? "・回測未達標" : ""}</p>
+      <p class="training-meta">已結算 ${trainingCount(forward.evaluated_count)} 筆・待結算 ${trainingCount(forward.pending_count)} 筆。至少 ${trainingCount(forward.minimum_count)} 筆、跨 ${trainingCount(forward.minimum_days)} 天才評估採用。</p>
+      ${forward.metrics ? trainingComparisonHTML(forward.metrics) : '<p class="training-meta">尚無已結算的前瞻結果。</p>'}` : ""}
+  </details>`;
+}
+
 function trainingMetricsHTML(data) {
   const job = data || {};
   const cards = TRAINING_HOURS.map(hours => {
@@ -1405,11 +1428,12 @@ function trainingMetricsHTML(data) {
     const adopted = period.adopted_version;
     const active = !!candidate.version && candidate.version === adopted;
     const label = active ? "已採用" : candidate.version
-      ? (candidate.passed === false ? "未採用・未通過驗證" : "未採用") : "尚無資料";
+      ? (candidate.passed === false ? "未採用・未通過驗證" : candidate.validation ? "回測通過・未採用" : "未採用") : "尚無資料";
     return `<article class="training-period"><div class="training-period-head"><h3>${hours} 小時</h3><span class="pill ${active ? "low" : "gray"}">${label}</span></div>
       <dl class="training-metrics"><div><dt>訓練／驗證筆數</dt><dd>${trainingCount(candidate.train_count)}／${trainingCount(candidate.valid_count)}</dd></div>
       <div><dt>Brier</dt><dd>${trainingScore(candidate.scores?.brier)}</dd></div><div><dt>最大回撤</dt><dd>${trainingPct(candidate.scores?.drawdown)}</dd></div></dl>
-      ${candidate.version || adopted ? `<div class="training-meta">${candidate.version ? `模型 ${esc(candidate.version)}` : ""}${adopted && !active ? `${candidate.version ? "・" : ""}已採用 ${esc(adopted)}` : ""}</div>` : ""}</article>`;
+      ${candidate.version || adopted ? `<div class="training-meta">${candidate.version ? `模型 ${esc(candidate.version)}` : ""}${adopted && !active ? `${candidate.version ? "・" : ""}已採用 ${esc(adopted)}` : ""}</div>` : ""}
+      ${trainingAssessmentHTML(candidate, period.forward)}</article>`;
   }).join("");
   return `<section class="card training-section"><div class="card-h"><h2>${ICON.bars}訓練結果</h2><span class="chip-muted">BTCUSDC・LightGBM</span></div>
     <p class="training-meta"><span>${esc(TRAINING_STATES[job.state] || "尚無訓練資料")}</span>${job.finished_at ? `<span>最近完成 ${trainingDate(job.finished_at)}（台北）</span>` : ""}${job.next_at ? `<span>下輪 ${trainingDate(job.next_at)}（台北）</span>` : ""}</p>
@@ -1430,7 +1454,7 @@ function trainingForecastHTML(latest, report) {
       ${hasForecast ? `<dl class="training-metrics"><div><dt>收高機率</dt><dd>${trainingPct(p.direction, 1)}</dd></div>
       <div><dt>漲幅 P80</dt><dd>${trainingPct(p.rise)}</dd></div><div><dt>跌幅 P80</dt><dd>${trainingPct(p.fall)}</dd></div></dl>
       <div class="training-meta">${item.anchor_ms ? `基準 ${fmtTime(item.anchor_ms)}（台北）` : "基準時間未知"}${Number.isFinite(item.anchor_price) ? `・${fmtPrice(item.anchor_price, 2)} USDC` : ""}</div>
-      ${item.version ? `<div class="training-meta">模型 ${esc(item.version)}</div>` : ""}` : messages[item?.state] ? `<p class="training-meta">${messages[item.state]}</p>` : ""}</article>`;
+      ${item.version ? `<div class="training-meta">模型 ${esc(item.version)}${item.variant === "calibrated" ? "・校準後" : ""}</div>` : ""}` : messages[item?.state] ? `<p class="training-meta">${messages[item.state]}</p>` : ""}</article>`;
   }).join("");
   return `<section class="card training-section"><div class="card-h"><h2>最新 BTC 報告預測</h2>${latest ? `<a class="ok" href="#/report/${encodeURIComponent(latest.id)}">${trainingDate(latest.created_at)}（台北）</a>` : ""}</div>
     ${latest && !report ? '<p class="training-meta">報告明細尚未載入。</p>' : ""}<div class="training-grid">${cards}</div></section>`;
