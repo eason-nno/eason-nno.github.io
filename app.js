@@ -1359,6 +1359,26 @@ async function pageReports(params) {
   });
 }
 const REPORT_ORDER = [["pm", "投資組合經理｜最終決策"], ["trader", "交易員｜交易計畫"], ["manager", "研究經理｜研究結論"], ["market", "技術分析師"], ["sentiment", "情緒分析師"], ["news", "加密新聞分析師"], ["onchain", "鏈上 / 衍生品分析師"], ["bull", "多頭研究員"], ["bear", "空頭研究員"], ["aggressive", "積極派風控"], ["conservative", "保守派風控"], ["neutral", "中立派風控"]];
+function marketTrainingHTML(snapshot) {
+  if (!snapshot) return "";
+  const pct = (value, digits = 2) => Number.isFinite(value) ? (value * 100).toFixed(digits) + "%" : "—";
+  const p = snapshot.forecast;
+  const score = snapshot.scores;
+  const states = {waiting:"等待首次訓練完成。", waiting_market:"等待完整的已收線行情。", unavailable:"本次模型預測暫時無法取得。"};
+  const forecast = p && score ? `<p>LightGBM <b>${esc(snapshot.version)}</b>・${snapshot.shadow ? "候選模型" : "已通過驗證"}・並行觀察</p>
+    <p>以 ${fmtTime(new Date(snapshot.anchor_ms).toISOString())}（台北）收盤價 <b>${fmtPrice(snapshot.anchor_price, 2)} USDC</b> 為基準，24 小時收高機率 <b>${pct(p.direction, 1)}</b>。</p>
+    <p>24 小時期間漲幅與跌幅的第 80 百分位預估為 <b>${pct(p.rise)}</b>／<b>${pct(p.fall)}</b>。</p>
+    <p class="note">訓練 ${esc(snapshot.train_count)} 筆・時間順序驗證 ${esc(snapshot.valid_count)} 筆・Brier 分數 ${Number(score.brier).toFixed(4)}（越低越好）・驗證最大回撤 ${pct(score.drawdown)}（24 小時收盤、無槓桿）</p>`
+    : `<p class="note">${esc(states[snapshot.state] || states.unavailable)}</p>`;
+  const review = snapshot.role_review;
+  const details = review ? `<details class="din"><summary>近 ${esc(review.days)} 天角色複盤</summary>
+    <p class="note">市場方向從報告完成後第一個整點開始比對 24 小時收盤。方向欄只統計有結構化方向的案例。</p>
+    <table class="tbl"><thead><tr><th>角色</th><th>已核對案例</th><th>方向吻合／可評估</th></tr></thead><tbody>
+    ${(review.roles || []).map(row => `<tr><td>${esc(ROLE_NAME[row.role] || row.role)}</td><td>${esc(row.cases)}</td><td>${row.scored ? esc(row.correct + "／" + row.scored) : "—"}</td></tr>`).join("")}</tbody></table>
+    ${(review.accounts || []).map(a => `<p class="note">策略測試經理・${esc(a.name)}：已平倉 ${esc(a.closed)} 筆，獲利 ${esc(a.wins)} 筆，淨損益 ${fmtPrice(a.pnl, 2)} USDC。</p>`).join("")}
+    ${(review.examples || []).map(x => `<p class="note"><a class="ok" href="#/report/${encodeURIComponent(x.report_id)}">${fmtTime(new Date(x.anchor_ms).toISOString())} 複盤案例</a>・24 小時漲跌 ${pct(x.return)}</p>`).join("")}</details>` : "";
+  return `<section class="card" style="margin-top:16px"><div class="card-h"><h2>BTC 市場模型｜24 小時預測</h2></div>${forecast}${details}</section>`;
+}
 async function pageReport(id) {
   const view = location.hash;
   const r = await api(`/api/crypto/ai/runs/${encodeURIComponent(id)}`);
@@ -1374,6 +1394,7 @@ async function pageReport(id) {
         <div class="factors"><div class="bull"><h4 class="up">看多因素</h4><ul>${(dec.bull_factors || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div><div class="bear"><h4 class="down">看空因素</h4><ul>${(dec.bear_factors || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>
         ${(res.warnings || []).length ? `<div class="callout"><b>注意</b><span>${res.warnings.map(esc).join("；")}</span></div>` : ""}</section>
       ${previousReviewHTML(res.previous_review)}
+      ${marketTrainingHTML(res.market_training)}
       ${res.new_strategy?`<section class="card" style="margin-top:16px"><div class="card-h"><h2>策略測試經理</h2></div><p class="note">${esc(res.new_strategy.state)}</p><a class="ok" href="#/paper/new">查看測試1號帳戶與決策 ›</a></section>`:""}
       <section class="card" style="margin-top:16px"><div class="rep-nav" id="rep-nav">${REPORT_ORDER.filter(([k]) => r.reports_html?.[k]).map(([k, t], i) => `<button class="tab outline ${i ? "" : "active"}" data-k="${k}">${esc(t.split("｜")[0])}</button>`).join("")}</div>
         <div class="md" id="rep-body"></div></section>
