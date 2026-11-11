@@ -6,7 +6,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 /* 靜態資料（後台每次分析完推送）＋瀏覽器即時行情，模擬原本的 /api 介面 */
-const DATA = { cache: {}, pending: new Map(), revisions: {}, fileTimes: {}, live: {}, published: null };
+const DATA = { cache: {}, pending: new Map(), revisions: {}, fileTimes: {}, live: {}, published: null, pagesReportRevision: null, catalogAt: 0 };
 const PUBLIC_RELAY = "https://easonagents-share.pages.dev/api/remote/site";
 const usesRelay = location.origin === "https://eason-nno.github.io";
 
@@ -73,7 +73,8 @@ async function J(name, maxAge = 30000) {
   if (c && (version ? c.version === version : Date.now() - c.t < maxAge)) {
     return name === "status.json" ? freshStatus(c.v) : c.v;
   }
-  const key = name + "|" + (version || "");
+  const awaitingReport = name === "runs.json" && version && DATA.pagesReportRevision !== version;
+  const key = name + "|" + (version || "") + (awaitingReport ? "|deploying" : "");
   if (!DATA.pending.has(key)) DATA.pending.set(key, (async () => {
     const live = DATA.live[name];
     let r;
@@ -81,10 +82,13 @@ async function J(name, maxAge = 30000) {
       try { r = await fetch(PUBLIC_RELAY + "/" + name + "?rev=" + version, { signal: AbortSignal.timeout(4000) }); } catch {}
     }
     if (!r?.ok && c && live) return c.v;
-    if (!r?.ok) r = await fetch("data/" + name + "?v=" + (version || Date.now()), { cache: version ? "default" : "no-store" });
+    // 若新版尚未部署到 Pages，舊回應不能用新版雜湊長期快取。
+    const cacheVersion = awaitingReport ? null : version;
+    if (!r?.ok) r = await fetch("data/" + name + "?v=" + (cacheVersion || Date.now()), { cache: cacheVersion ? "default" : "no-store" });
     if (!r.ok) throw new Error(r.status === 404 ? "資料尚未同步，請稍後再試" : "HTTP " + r.status);
     const v = await r.json();
-    if (DATA.revisions[name] === version && (!live || r.url.startsWith(PUBLIC_RELAY))) DATA.cache[name] = { t: Date.now(), version, v };
+    const fromRelay = r.url.startsWith(PUBLIC_RELAY);
+    if (DATA.revisions[name] === version && (fromRelay || (!live && !awaitingReport))) DATA.cache[name] = { t: Date.now(), version, v };
     return name === "status.json" ? freshStatus(v) : v;
   })().finally(() => DATA.pending.delete(key)));
   return DATA.pending.get(key);
@@ -280,15 +284,38 @@ async function pollData() {
     const r = await fetch("data/status.json?v=" + Date.now(), { cache: "no-store", signal: AbortSignal.timeout(7000) });
     if (!r.ok) return;
     const st = await r.json();
+    const publishedAt = Date.parse(st.published_at);
+    const changedCatalogs = new Set();
+    if (publishedAt >= DATA.catalogAt && st.report_catalogs) {
+      DATA.catalogAt = publishedAt;
+      for (const [name, rev] of Object.entries(st.report_catalogs)) {
+        if (DATA.revisions[name] !== rev) {
+          DATA.revisions[name] = rev;
+          changedCatalogs.add(name);
+        }
+      }
+    }
+    const sections = { ...st.sections };
+    const reportRevision = st.report_index_revision || sections["runs.json"];
+    if (reportRevision) {
+      sections["runs.json"] = reportRevision;
+      if (DATA.pagesReportRevision !== reportRevision) {
+        DATA.pagesReportRevision = reportRevision;
+        if (DATA.revisions["runs.json"] === reportRevision && !DATA.live["runs.json"] && DATA.cache["runs.json"]?.version !== reportRevision) {
+          emit("data_updated", new Set(["runs.json"]));
+        }
+      }
+    }
     if (Date.parse(st.published_at) >= (Date.parse(DATA.published) || 0)) {
-      for (const [name, rev] of Object.entries(st.sections || {})) {
+      for (const [name, rev] of Object.entries(sections)) {
         if (DATA.live[name]?.rev === rev || Date.parse(st.published_at) > Date.parse(DATA.live[name]?.at)) delete DATA.live[name];
         DATA.fileTimes[name] = Date.parse(st.published_at);
       }
-      applyStatus(st);
+      applyStatus(st, sections);
     } else if (DATA.cache["status.json"] && !!freshStatus(DATA.cache["status.json"].v).stale !== !!DATA.stale) {
       applyStatus(DATA.cache["status.json"].v, {});
     }
+    if (changedCatalogs.size) emit("data_updated", changedCatalogs);
   } catch { /* 連線失敗時保留已顯示的資料 */ }
 }
 
@@ -301,7 +328,13 @@ async function pollRelay(schedule = true) {
         const at = Date.parse(status?.published_at);
         if (Number.isFinite(at) && at >= (Date.parse(DATA.published) || 0)) {
           const revisions = {};
+          const reportRevision = status.report_index_revision;
+          if (reportRevision) {
+            revisions["runs.json"] = reportRevision;
+            if (files["runs.json"]?.rev !== reportRevision) delete DATA.live["runs.json"];
+          }
           for (const [name, version] of Object.entries(files)) {
+            if (name === "runs.json" && reportRevision && version.rev !== reportRevision) continue;
             const fileTime = Date.parse(version.at || status.published_at);
             if (!/^[a-f0-9]{16}$/.test(version.rev) || fileTime < (DATA.fileTimes[name] || 0)) continue;
             DATA.fileTimes[name] = fileTime;
@@ -1162,11 +1195,7 @@ async function pagePaper() {
   ${tradePanelHTML(P.open.length, P.pending.length)}
   <section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.trendUp}權益曲線</h2><div class="right"><span class="chip-muted">已實現（平倉 + 資金費）＋ 目前含未實現</span></div></div>
     <div id="eq-chart" style="height:240px"></div></section>
-  <div class="set-grid" style="margin-top:16px">
-    <section class="card"><div class="card-h"><h2>${ICON.bolt}資金費紀錄（實際結算；v1.0.8 起為 Binance USDC 永續）</h2><div class="right"><span class="chip-muted num">已付 ${usd(P.funding_paid, 4)}・已收 ${usd(P.funding_received, 4)}</span></div></div>
-      ${P.funding.length ? `<table class="tbl"><thead><tr><th>結算時間（台北）</th><th>合約</th><th>方向</th><th>費率</th><th>結算價</th><th>金額</th></tr></thead><tbody>
-        ${P.funding.slice().reverse().map((f) => `<tr><td class="num">${fmtTime(f.funding_ms)}</td><td>${esc(f.symbol)}</td><td>${SIDE[f.side][0]}</td><td class="num">${(f.rate * 100).toFixed(4)}%</td><td class="num">${fmtPrice(f.price)}</td><td class="num ${signCls(f.payment)}">${usd(f.payment, 4)}</td></tr>`).join("")}</tbody></table>`
-        : `<div class="empty-state" style="height:110px"><b>尚無資金費紀錄</b><small>持倉跨過 Binance 結算時間才會計入（BTC / ETH 每 8 小時：台北 00:00、08:00、16:00；ZEC 每 4 小時）。</small></div>`}</section>
+  <div style="margin-top:16px">
     <section class="card"><div class="card-h"><h2>${ICON.people || ICON.shield}夜間持倉評估</h2></div><p class="note">投資組合經理於設定的停報時段每小時檢查原版現有持倉／委託，不產生新研究報告；價格保護持續運作。開關位於本機控制台。</p>
     ${(P.position_reviews||[]).length?`<div class="review-list">${P.position_reviews.map(r=>`<details class="din"><summary>${esc(baseOf(r.symbol))}・${fmtTime(r.created_at)}・${esc(({completed:"已評估",failed:"未完成",interrupted:"已中斷",running:"評估中",ready:"驗證中"})[r.status]||r.status)}・${esc(({HOLD:"續抱",CLOSE:"只平倉",REVERSE:"反手",UPDATE_RISK:"調整保護",CANCEL_ORDER:"取消委託",WAIT:"觀望"})[r.decision?.action]||"")}</summary><div class="note" style="padding:12px"><p>${esc(r.decision?.executive_summary||r.error||"等待評估結果")}</p><p>${esc(r.execution?.reason||"")}</p><p>下次檢查：${esc(r.decision?.invalidation||"—")}・模型 ${esc(r.model||"—")}</p>${r.report_id?`<a class="ok" href="#/report/${encodeURIComponent(r.report_id)}">參考研究</a>`:""}</div></details>`).join("")}</div>`:'<p class="note">尚無夜間評估紀錄；沒有持倉／委託時不呼叫AI。</p>'}</section>
 
@@ -1216,7 +1245,7 @@ async function pagePaper() {
     tab = TRADE_TABS.some(t => t[0] === next) ? next : "pos";
     pagePaper.tab = tab; pagePaper.range = range;
     selectTradeTab(tab);
-    patchHTML($("#pp-body"), {pos:()=>{const {rows,footer}=tradePage(P.open,pages,"pos");return posBody(rows)+footer}, ord:ordBody, orders:()=>tradeOrdersHTML(P.orders,"original"), fills:()=>tradeFillsHTML(tradeFills(P,"original")), hist:histBody}[tab]());
+    patchHTML($("#pp-body"), {pos:()=>{const {rows,footer}=tradePage(P.open,pages,"pos");return posBody(rows)+footer}, ord:ordBody, orders:()=>tradeOrdersHTML(P.orders,"original"), fills:()=>tradeFillsHTML(tradeFills(P,"original")), hist:histBody, funding:()=>tradeFundingHTML(P,pages)}[tab]());
     $$("#pp-range .tab").forEach(b => b.onclick = () => { range=b.dataset.r; pages.hist=0; renderTab(); });
     bindTradePager(pages,tab,renderTab);
     upd();
@@ -1265,21 +1294,53 @@ async function pagePaper() {
     if (visible) ch.timeScale().setVisibleLogicalRange(visible);
   });
 }
+const catalogFile = scope => `runs/catalog-${scope}.json`;
+const REPORT_PAGE_SIZE = 30;
+function reportPageRange(count, requested) {
+  const pages = Math.max(1, Math.ceil(count / REPORT_PAGE_SIZE));
+  return {count, pages, page: Number.isInteger(requested) ? Math.max(1, Math.min(requested, pages)) : 1};
+}
+function reportPager({page, pages}, route, label) {
+  return pages > 1 ? `<nav class="trade-pager" aria-label="${esc(label)}">
+    ${page > 1 ? `<a class="btn sm" href="${route}?page=${page - 1}">上一頁</a>` : ""}
+    <span class="muted">第 ${page} / ${pages} 頁</span>
+    ${page < pages ? `<a class="btn sm" href="${route}?page=${page + 1}">下一頁</a>` : ""}
+  </nav>` : "";
+}
+async function catalogPage(scope, requested, legacy) {
+  const catalog = await J(catalogFile(scope)).catch(() => null);
+  if (!catalog) {
+    const rows = await legacy();
+    const range = reportPageRange(rows.length, requested);
+    return {...range, rows: rows.slice((range.page - 1) * REPORT_PAGE_SIZE, range.page * REPORT_PAGE_SIZE)};
+  }
+  const range = reportPageRange(catalog.total, requested);
+  if (range.page === 1) return {...range, rows: catalog.first};
+  let skip = (range.page - 1) * REPORT_PAGE_SIZE, remaining = REPORT_PAGE_SIZE;
+  const requests = [];
+  for (const {file, rev, count} of catalog.parts) {
+    if (!remaining) break;
+    if (skip >= count) { skip -= count; continue; }
+    const begin = skip, size = Math.min(remaining, count - skip);
+    DATA.revisions[file] = rev;
+    requests.push(J(file).then(rows => rows.slice(begin, begin + size)));
+    skip = 0;
+    remaining -= size;
+  }
+  return {...range, rows: (await Promise.all(requests)).flat()};
+}
 async function pageReports(params) {
   setTitle("研究報告", "AI 團隊・繁體中文");
-  const load = () => Promise.all([api("/api/crypto/ai/runs?limit=300"), J("ai-usage.json").catch(() => null)]);
   const requestedPage = Number(params.get("page"));
-  const layout = (runs, usage) => {
-    const pageSize = 30, total = Math.max(1, Math.ceil(runs.length / pageSize));
-    const page = Number.isInteger(requestedPage) ? Math.max(1, Math.min(requestedPage, total)) : 1;
-    const visible = runs.slice((page - 1) * pageSize, page * pageSize);
-    const pager = total > 1 ? `<nav class="trade-pager" aria-label="研究報告分頁">
-      ${page > 1 ? `<a class="btn sm" href="#/reports?page=${page - 1}">上一頁</a>` : ""}
-      <span class="muted">第 ${page} / ${total} 頁</span>
-      ${page < total ? `<a class="btn sm" href="#/reports?page=${page + 1}">下一頁</a>` : ""}
-    </nav>` : "";
-    return `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${runs.length} 份</span></div></div>
-    ${runs.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="第 1 至 5 組，含失敗重試">呼叫次數（依組別）</th><th>耗時</th><th></th></tr></thead><tbody>
+  const load = () => Promise.all([
+    catalogPage("research", requestedPage, () => api("/api/crypto/ai/runs?limit=300")),
+    J("ai-usage.json").catch(() => null), J("status.json")
+  ]);
+  const layout = (result, usage, status) => {
+    const visible = result.rows.map(row => displayRun(row, status));
+    const pager = reportPager(result, "#/reports", "研究報告分頁");
+    return `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${result.count} 份</span></div></div>
+    ${visible.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="第 1 至 5 組，含失敗重試">呼叫次數（依組別）</th><th>耗時</th><th></th></tr></thead><tbody>
     ${visible.map((r) => { const d = DIRS[r.decision] || DIRS.WAIT; const m = r.models || {};
       return `<tr class="run-row" data-sync-key="${esc(r.id)}"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
         <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "stopped" ? `<span class="pill gray">已停止</span>` : r.status === "sync_stale" ? `<span class="pill gray">同步中斷</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
@@ -1292,7 +1353,7 @@ async function pageReports(params) {
   const view = location.hash, data = await load();
   if (view !== location.hash) return;
   $("#app").innerHTML = layout(...data);
-  onData(["status.json", "runs.json", "ai-usage.json"], async (active) => {
+  onData(["status.json", catalogFile("research"), "runs.json", "ai-usage.json"], async (active) => {
     const data = await load();
     if (active()) patchHTML($("#app"), layout(...data));
   });
@@ -1450,8 +1511,8 @@ async function route() {
     else if ((m = path.match(/^\/coin\/([A-Za-z0-9]+)/))) { renderNav("coin"); await pageCoin(m[1], params); }
     else if (path === "/team") { renderNav("team"); await pageTeam(params); }
     else if (path === "/paper") { renderNav("paper"); await pagePaper(); }
-    else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper(); }
-    else if (path === "/paper/test2") { renderNav("paper"); await pageNewPaper("test2"); }
+    else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper("test1", params); }
+    else if (path === "/paper/test2") { renderNav("paper"); await pageNewPaper("test2", params); }
     else if (path === "/reports") { renderNav("reports"); await pageReports(params); }
     else if ((m = path.match(/^\/report\/(.+)$/))) { renderNav("reports"); await pageReport(decodeURIComponent(m[1])); }
     else if (path === "/settings") { renderNav("settings"); await pageSettings(); }

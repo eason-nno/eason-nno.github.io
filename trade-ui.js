@@ -1,5 +1,5 @@
 /* 雙策略共用唯讀交易區。只使用已保存的委託／成交，不產生交易資料。 */
-const TRADE_TABS = [["pos", "倉位"], ["ord", "當前委託"], ["orders", "歷史委託"], ["fills", "歷史成交"], ["hist", "倉位歷史"]];
+const TRADE_TABS = [["pos", "倉位"], ["ord", "當前委託"], ["orders", "歷史委託"], ["fills", "歷史成交"], ["hist", "倉位歷史"], ["funding", "資金費紀錄"]];
 function formatLeverage(value) {
   return value == null || !Number.isFinite(Number(value)) ? "—" : `${Number(value).toLocaleString("en-US",{maximumFractionDigits:8})}X`;
 }
@@ -14,8 +14,8 @@ function bindTradeTabs(render) {
   $$("#pp-tabs .tab").forEach(b => {
     b.onclick = () => render(b.dataset.t);
     b.onkeydown = e => { const i = TRADE_TABS.findIndex(t => t[0] === b.dataset.t); let next;
-      if (e.key === "ArrowRight") next = (i+1)%5; else if (e.key === "ArrowLeft") next = (i+4)%5;
-      else if(e.key === "Home") next=0; else if(e.key === "End") next=4; else return;
+      if (e.key === "ArrowRight") next = (i+1)%TRADE_TABS.length; else if (e.key === "ArrowLeft") next = (i+TRADE_TABS.length-1)%TRADE_TABS.length;
+      else if(e.key === "Home") next=0; else if(e.key === "End") next=TRADE_TABS.length-1; else return;
       e.preventDefault(); render(TRADE_TABS[next][0]); $(`#trade-tab-${TRADE_TABS[next][0]}`).focus();
     };
   });
@@ -35,6 +35,19 @@ function bindTradePager(pages, tab, render) {
   $$("#pp-body [data-trade-page]").forEach(button => {
     button.onclick = () => { pages[tab] = Number(button.dataset.tradePage); render(); };
   });
+}
+function tradeFundingHTML(account, pages) {
+  const time = row => row.funding_ms ?? row.ts;
+  const cycles = new Map((account.cycles || []).map(cycle => [cycle.id, cycle]));
+  const funding = (account.funding || []).slice().sort((a, b) => time(b) - time(a));
+  const {rows, footer} = tradePage(funding, pages, "funding");
+  if (!rows.length) return '<div class="empty-state"><b>尚無資金費紀錄</b><small>跨過 Binance 結算時點才計入。</small></div>';
+  const totals = account.funding_paid == null ? "" : `<p class="note">已付 ${fmtPrice(account.funding_paid, 4)}・已收 ${fmtPrice(account.funding_received, 4)}</p>`;
+  return `${totals}<div class="table-scroll"><table class="tbl"><thead><tr><th>結算時間（台北）</th><th>合約</th><th>方向</th><th>費率</th><th>結算價</th><th>金額</th></tr></thead><tbody>
+    ${rows.map(row => {
+      const cycle = cycles.get(row.cycle_id), side = row.side || cycle?.side;
+      return `<tr><td class="num">${fmtTime(time(row))}</td><td>${esc(row.symbol || cycle?.symbol || "—")}</td><td>${side === "LONG" ? "做多" : side === "SHORT" ? "做空" : "—"}</td><td class="num">${(row.rate * 100).toFixed(4)}%</td><td class="num">${fmtPrice(row.price)}</td><td class="num ${signCls(row.payment)}">${row.payment > 0 ? "+" : ""}${fmtPrice(row.payment, 4)}</td></tr>`;
+    }).join("")}</tbody></table></div>${footer}`;
 }
 function tradeReportId(order) {
   return order.position_review_id ? order.report_id : (order.report_id || order.run_id);
