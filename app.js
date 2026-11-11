@@ -1391,6 +1391,7 @@ async function pageReports(params) {
 const REPORT_ORDER = [["pm", "投資組合經理｜最終決策"], ["trader", "交易員｜交易計畫"], ["manager", "研究經理｜研究結論"], ["market", "技術分析師"], ["sentiment", "情緒分析師"], ["news", "加密新聞分析師"], ["onchain", "鏈上 / 衍生品分析師"], ["bull", "多頭研究員"], ["bear", "空頭研究員"], ["aggressive", "積極派風控"], ["conservative", "保守派風控"], ["neutral", "中立派風控"]];
 const TRAINING_HOURS = [1, 4, 24];
 const TRAINING_PAGE_SIZE = 8;
+const TRAINING_CATALOG = "training-runs";
 const TRAINING_STATES = {running:"訓練中", complete:"訓練完成", no_new_data:"等待新樣本", insufficient_data:"完整樣本不足", timeout:"訓練逾時", failed:"訓練失敗", interrupted:"訓練中斷"};
 const trainingPct = (value, digits = 2) => Number.isFinite(value) ? (value * 100).toFixed(digits) + "%" : "—";
 const trainingScore = value => Number.isFinite(value) ? value.toFixed(4) : "—";
@@ -1410,10 +1411,14 @@ function trainingAssessmentHTML(candidate, forward) {
   const holdout = validation?.holdout;
   const variant = candidate.variant === "calibrated" ? "校準後" : "原始 LightGBM";
   const forwardState = {observing: "觀察中", adopted: "已採用", not_adopted: "未採用"};
-  return `<details class="training-assessment"><summary>回測比較與前瞻觀察</summary>
+  const span = item => `${trainingDate(item.start_ms)} 至 ${trainingDate(item.end_ms)}・${trainingCount(item.count)} 筆`;
+  return `<details class="training-assessment"><summary>訓練樣本、回測與前瞻</summary>
     ${holdout ? `<p class="training-meta">較早回測通過 ${trainingCount(validation.rolling_passed)}／${trainingCount(validation.rolling?.length)} 段・候選為 ${variant}・校準 ${trainingCount(validation.calibration_count)} 筆</p>
-      <p class="training-meta">保留驗證 ${fmtTime(holdout.start_ms)} 至 ${fmtTime(holdout.end_ms)}（台北）・${trainingCount(holdout.count)} 筆</p>
-      ${trainingComparisonHTML(holdout.metrics)}` : ""}
+      ${holdout.train ? `<p class="training-meta">訓練 ${span(holdout.train)}</p>` : ""}
+      ${holdout.calibration ? `<p class="training-meta">校準 ${span(holdout.calibration)}</p>` : ""}
+      <p class="training-meta">保留驗證 ${span(holdout)}</p>
+      ${trainingComparisonHTML(holdout.metrics)}
+      ${validation.rolling?.map((item, i) => `<p class="training-meta">回測 ${i + 1}・${span(item)}・Brier ${trainingScore(item.metrics?.[candidate.variant]?.brier)}</p>`).join("") || ""}` : ""}
     ${forward ? `<p class="training-meta">前瞻模型 ${esc(forward.version)}・${forwardState[forward.state] || "等待觀察"}${forward.historical_passed === false ? "・回測未達標" : ""}</p>
       <p class="training-meta">已結算 ${trainingCount(forward.evaluated_count)} 筆・待結算 ${trainingCount(forward.pending_count)} 筆。至少 ${trainingCount(forward.minimum_count)} 筆、跨 ${trainingCount(forward.minimum_days)} 天才評估採用。</p>
       ${forward.metrics ? trainingComparisonHTML(forward.metrics) : '<p class="training-meta">尚無已結算的前瞻結果。</p>'}` : ""}
@@ -1430,56 +1435,94 @@ function trainingMetricsHTML(data) {
     const label = active ? "已採用" : candidate.version
       ? (candidate.passed === false ? "未採用・未通過驗證" : candidate.validation ? "回測通過・未採用" : "未採用") : "尚無資料";
     return `<article class="training-period"><div class="training-period-head"><h3>${hours} 小時</h3><span class="pill ${active ? "low" : "gray"}">${label}</span></div>
-      <dl class="training-metrics"><div><dt>訓練／驗證筆數</dt><dd>${trainingCount(candidate.train_count)}／${trainingCount(candidate.valid_count)}</dd></div>
-      <div><dt>Brier</dt><dd>${trainingScore(candidate.scores?.brier)}</dd></div><div><dt>最大回撤</dt><dd>${trainingPct(candidate.scores?.drawdown)}</dd></div></dl>
-      ${candidate.version || adopted ? `<div class="training-meta">${candidate.version ? `模型 ${esc(candidate.version)}` : ""}${adopted && !active ? `${candidate.version ? "・" : ""}已採用 ${esc(adopted)}` : ""}</div>` : ""}
-      ${trainingAssessmentHTML(candidate, period.forward)}</article>`;
+      <dl class="training-metrics training-scores">
+      <div><dt>Brier（回測）</dt><dd>${trainingScore(candidate.scores?.brier)}</dd><small>基準 ${trainingScore(candidate.baseline?.brier)}</small></div>
+      <div><dt>訓練／驗證筆數</dt><dd>${trainingCount(candidate.train_count)}／${trainingCount(candidate.valid_count)}</dd></div>
+      <div><dt>最大回撤</dt><dd>${trainingPct(candidate.scores?.drawdown)}</dd></div></dl>
+      ${candidate.version || adopted ? `<div class="training-meta">${candidate.version ? `${active ? "模型" : "候選"} ${esc(candidate.version)}` : ""}${adopted && !active ? `${candidate.version ? "・" : ""}已採用 ${esc(adopted)}` : ""}</div>` : ""}</article>`;
   }).join("");
   return `<section class="card training-section"><div class="card-h"><h2>${ICON.bars}訓練結果</h2><span class="chip-muted">BTCUSDC・LightGBM</span></div>
-    <p class="training-meta"><span>${esc(TRAINING_STATES[job.state] || "尚無訓練資料")}</span>${job.finished_at ? `<span>最近完成 ${trainingDate(job.finished_at)}（台北）</span>` : ""}${job.next_at ? `<span>下輪 ${trainingDate(job.next_at)}（台北）</span>` : ""}</p>
+    <p class="training-meta"><span>${esc(TRAINING_STATES[job.state] || "尚無訓練資料")}</span>${job.finished_at ? `<span>最近結束 ${trainingDate(job.finished_at)}（台北）</span>` : ""}${job.next_at ? `<span>下輪 ${trainingDate(job.next_at)}（台北）</span>` : ""}<span>Brier 越低，收高機率越貼近實際結果。</span></p>
     <div class="training-grid">${cards}</div>
   </section>`;
 }
 
-function trainingForecastHTML(latest, report) {
-  const snapshot = report?.result?.market_training;
-  const periods = snapshot?.horizons || (snapshot ? {24: snapshot} : {});
+function trainingForecastHTML(item) {
+  const p = item?.forecast;
   const messages = {waiting: "等待模型", waiting_market: "等待完整行情", unavailable: "預測未能取得"};
-  const cards = TRAINING_HOURS.map(hours => {
-    const item = periods[hours];
-    const p = item?.forecast;
-    const hasForecast = (!item?.state || item.state === "ready") && [p?.direction, p?.rise, p?.fall].every(Number.isFinite);
-    const label = hasForecast ? (item.shadow === false ? "已採用" : item.shadow === true ? "候選・未採用" : "採用狀態未知") : "尚無資料";
-    return `<article class="training-period"><div class="training-period-head"><h3>${hours} 小時</h3><span class="pill ${hasForecast && item.shadow === false ? "low" : "gray"}">${label}</span></div>
-      ${hasForecast ? `<dl class="training-metrics"><div><dt>收高機率</dt><dd>${trainingPct(p.direction, 1)}</dd></div>
-      <div><dt>漲幅 P80</dt><dd>${trainingPct(p.rise)}</dd></div><div><dt>跌幅 P80</dt><dd>${trainingPct(p.fall)}</dd></div></dl>
-      <div class="training-meta">${item.anchor_ms ? `基準 ${fmtTime(item.anchor_ms)}（台北）` : "基準時間未知"}${Number.isFinite(item.anchor_price) ? `・${fmtPrice(item.anchor_price, 2)} USDC` : ""}</div>
-      ${item.version ? `<div class="training-meta">模型 ${esc(item.version)}${item.variant === "calibrated" ? "・校準後" : ""}</div>` : ""}` : messages[item?.state] ? `<p class="training-meta">${messages[item.state]}</p>` : ""}</article>`;
-  }).join("");
-  return `<section class="card training-section"><div class="card-h"><h2>最新 BTC 報告預測</h2>${latest ? `<a class="ok" href="#/report/${encodeURIComponent(latest.id)}">${trainingDate(latest.created_at)}（台北）</a>` : ""}</div>
-    ${latest && !report ? '<p class="training-meta">報告明細尚未載入。</p>' : ""}<div class="training-grid">${cards}</div></section>`;
+  if (item?.state !== "ready" || ![p?.direction, p?.rise, p?.fall].every(Number.isFinite)) {
+    return `<p class="training-meta">${messages[item?.state] || "這輪沒有保存預測"}</p>`;
+  }
+  const actual = item.outcome;
+  const verified = actual?.state === "verified";
+  const movement = verified ? (actual.return > 0 ? "收高" : actual.return < 0 ? "收低" : "平盤") : "";
+  return `<div class="training-meta">預測模型 ${esc(item.version)}・${item.shadow ? "候選・未採用" : "已採用"}</div>
+    <div class="training-meta">基準 ${fmtTime(item.anchor_ms)}・${fmtPrice(item.anchor_price, 2)} USDC</div>
+    <div class="training-meta">預測時間 ${fmtTime(item.issued_ms)}・驗證收盤 ${fmtTime(item.target_ms)}</div>
+    <table class="tbl training-comparison"><thead><tr><th scope="col">指標</th><th scope="col">預測</th><th scope="col">實際</th></tr></thead><tbody>
+    <tr><th scope="row">收高</th><td class="num">${trainingPct(p.direction, 1)}</td><td>${movement || "—"}</td></tr>
+    <tr><th scope="row">最大漲幅</th><td class="num">${trainingPct(p.rise)} <small>P80</small></td><td class="num">${trainingPct(actual?.rise)}</td></tr>
+    <tr><th scope="row">最大跌幅</th><td class="num">${trainingPct(p.fall)} <small>P80</small></td><td class="num">${trainingPct(actual?.fall)}</td></tr>
+    </tbody></table>
+    <p class="training-meta">${verified ? `已驗證・收盤 ${fmtPrice(actual.close, 2)} USDC・報酬 ${actual.return > 0 ? "+" : ""}${trainingPct(actual.return)}`
+      : actual?.state === "missing" ? "驗證區間缺少完整行情" : "等待收線資料核對"}</p>`;
 }
 
-function trainingHistoryHTML(history) {
-  const rows = history.rows.map(row => `<li data-sync-key="${esc(row.id)}"><span class="num">${trainingDate(row.created_at)}（台北）</span><a class="ok" href="#/report/${encodeURIComponent(row.id)}">查看報告</a></li>`).join("");
-  return `<section class="card training-section"><div class="card-h"><h2>BTC 歷史報告</h2><span class="chip-muted">共 ${history.count} 份</span></div>
-    ${rows ? `<ul class="training-history">${rows}</ul>` : '<p class="training-meta">尚無 BTC 報告。</p>'}${reportPager(history, "#/training", "BTC 歷史報告分頁")}</section>`;
+function trainingRunHTML(report, selected, page) {
+  const dataset = report?.dataset;
+  const title = selected ? "訓練報告" : "最新訓練報告";
+  if (!report) return `<section class="card training-section"><div class="card-h"><h2>${title}</h2></div>
+    <p class="training-meta">${selected ? "這份訓練報告暫未載入。" : "尚未載入訓練報告。"}</p></section>`;
+  const cards = TRAINING_HOURS.map(hours => {
+    const period = report.horizons?.[hours] || {};
+    const candidate = period.candidate || {};
+    const state = period.state === "no_new_data" ? "沿用前次模型" : TRAINING_STATES[period.state] || "尚無資料";
+    return `<article class="training-period"><div class="training-period-head"><h3>${hours} 小時</h3><span class="pill gray">${state}</span></div>
+      ${candidate.version ? `<div class="training-meta">模型 ${esc(candidate.version)}・驗證 Brier ${trainingScore(candidate.scores?.brier)}・回撤 ${trainingPct(candidate.scores?.drawdown)}</div>
+      <div class="training-meta">訓練／驗證 ${trainingCount(candidate.train_count)}／${trainingCount(candidate.valid_count)} 筆・${period.adopted_version ? `已採用 ${esc(period.adopted_version)}` : "尚無已採用模型"}</div>` : ""}
+      ${trainingForecastHTML(report.forecasts?.[hours])}
+      ${trainingAssessmentHTML(candidate, period.forward)}</article>`;
+  }).join("");
+  return `<section id="training-report" class="card training-section"><div class="card-h"><h2>${title}</h2>
+    ${selected ? `<a class="ok" href="#/training?page=${page}">回到最新訓練</a>` : ""}</div>
+    <p class="training-meta"><span>${trainingDate(report.finished_at)}（台北）</span>
+      <span>${TRAINING_STATES[report.state] || "狀態未知"}</span>${Number.isFinite(report.elapsed_s) ? `<span>耗時 ${report.elapsed_s} 秒</span>` : ""}</p>
+    ${dataset ? `<p class="training-meta">${esc(dataset.symbol)}・${trainingCount(dataset.count)} 根 1 小時已收線 K 線・${trainingDate(dataset.start_ms)} 至 ${trainingDate(dataset.end_ms)}</p>
+      <p class="training-meta">以近 ${trainingCount(dataset.lookback_hours)} 小時的報酬、區間和成交量特徵，分別學習收高機率及最大漲跌幅的第 80 百分位。驗證以基準收盤價計算。</p>`
+      : '<p class="training-meta">這輪沒有保存行情範圍。</p>'}
+    <div class="training-grid">${cards}</div></section>`;
+}
+
+function trainingHistoryHTML(history, selected) {
+  const rows = history.rows.map(row => `<li data-sync-key="${esc(row.id)}"><div><b class="num">${trainingDate(row.finished_at)}（台北）</b>
+    <div class="training-meta">${TRAINING_STATES[row.state] || "狀態未知"}${row.verified_hours?.length ? `・已驗證 ${row.verified_hours.join("／")} 小時` : ""}</div></div>
+    <a class="ok" href="#/training?page=${history.page}&amp;run=${encodeURIComponent(row.id)}"${selected === row.id ? ' aria-current="true"' : ""}>查看訓練報告</a></li>`).join("");
+  return `<section class="card training-section"><div class="card-h"><h2>訓練紀錄</h2><span class="chip-muted">共 ${history.count} 份</span></div>
+    ${rows ? `<ul class="training-history">${rows}</ul>` : '<p class="training-meta">尚無已保存的訓練紀錄。</p>'}${reportPager(history, "#/training", "訓練紀錄分頁")}</section>`;
 }
 
 async function pageTraining(params) {
   setTitle("訓練結果");
   let active = true;
   pageCleanup.push(() => { active = false; });
-  const loadHistory = () => catalogPage("training", Number(params.get("page")), async () =>
-    (await api("/api/crypto/ai/runs?symbol=BTCUSDC&limit=300")).filter(row => row.status === "done"), TRAINING_PAGE_SIZE);
+  const requested = params.get("run");
+  const selected = /^\d{13}$/.test(requested || "") ? requested : null;
+  const loadHistory = () => catalogPage(TRAINING_CATALOG, Number(params.get("page")), () => [], TRAINING_PAGE_SIZE);
   const render = async () => {
     const [status, history] = await Promise.all([J("status.json"), loadHistory()]);
     if (!active) return;
-    const report = history.latest ? await api(`/api/crypto/ai/runs/${encodeURIComponent(history.latest.id)}`).catch(() => null) : null;
-    if (active) patchHTML($("#app"), trainingMetricsHTML(status.market_training) + trainingForecastHTML(history.latest, report) + trainingHistoryHTML(history));
+    const row = selected ? history.rows.find(item => item.id === selected) : history.latest;
+    const id = selected || row?.id;
+    const file = id ? `runs/training-run-${id}.json` : null;
+    if (file) DATA.revisions[file] = row?.detail_rev;
+    const report = file ? await J(file).catch(() => null) : null;
+    if (active) patchHTML($("#app"), trainingMetricsHTML(status.market_training) +
+      trainingRunHTML(report, selected, history.page) + trainingHistoryHTML(history, selected));
   };
   await render();
-  if (active) onData(["status.json", catalogFile("training"), "runs.json"], render);
+  if (!active) return;
+  if (selected) $("#training-report")?.scrollIntoView();
+  onData(["status.json", catalogFile(TRAINING_CATALOG)], render);
 }
 
 function marketTrainingHTML(snapshot) {
