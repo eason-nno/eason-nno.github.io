@@ -963,6 +963,19 @@ async function pageCoin(sym, params) {
 }
 
 /* AI 團隊 */
+const teamDayFormat = new Intl.DateTimeFormat("sv-SE", {timeZone: TZ, year:"numeric", month:"2-digit", day:"2-digit"});
+function teamReportDay(value) {
+  const date = new Date(value || NaN);
+  return Number.isFinite(date.getTime()) ? teamDayFormat.format(date) : "";
+}
+
+function teamDayChoices(reports, day, selectedId) {
+  const selected = reports.find(r => r.id === selectedId);
+  const active = teamReportDay(selected?.created_at) || day;
+  const days = [...new Set(reports.map(r => teamReportDay(r.created_at)).filter(Boolean))].sort().reverse();
+  return {days, day: days.includes(active) ? active : "", reports: active ? reports.filter(r => teamReportDay(r.created_at) === active) : []};
+}
+
 async function pageTeam(params) {
   const view = location.hash;
   setTitle("AI 團隊研究室", "原版 12 位＋策略測試經理・獨立分工");
@@ -971,6 +984,7 @@ async function pageTeam(params) {
   let sym = coinKey(params.get("symbol") || (lv.busy ? lv.current.symbol : lastCoin));
   if (!WATCH.includes(sym)) sym = WATCH[0];
   const selectedReport = params.get("report") || "";
+  const selectedDay = params.get("date") || "";
   let A = aset.settings;
   const steps = [["資料分析", ["market", "sentiment", "news", "onchain"]], ["多空辯論", ["bull", "bear", "manager"]], ["交易評估", ["trader"]], ["風險審核", ["aggressive", "conservative", "neutral", "pm"]]];
   // 狀態：進行中的 run 或最近一次完成的 run
@@ -1029,7 +1043,8 @@ async function pageTeam(params) {
   ${noteHTML()}
   <div style="display:flex;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
     <span class="muted">標的</span><select class="select" id="team-sym" style="height:36px;min-width:150px">${WATCH.map((s) => `<option ${s === sym ? "selected" : ""} value="${s}">${baseOf(s)}・${s}</option>`).join("")}</select>
-    <label class="muted" for="team-report">研究報告</label><select class="select" id="team-report" style="height:36px;max-width:100%"></select>
+    <label class="muted" for="team-day">報告日期</label><select class="select" id="team-day" style="height:36px;max-width:100%"></select>
+    <label class="muted" for="team-report">當日報告</label><select class="select" id="team-report" style="height:36px;max-width:100%"></select>
     <span class="muted" style="margin-left:10px">自動排程</span><span class="chip-muted">${A.schedule_enabled ? `每 ${A.schedule_interval_hours} 小時・${baseOf(A.schedule_symbol)}・下次 ${aset.next_run ? fmtTime(aset.next_run) : "—"}` : "已關閉"}</span>
     <span class="muted">持有期間</span><span class="chip-muted">${holdTxt(A.holding_period_days)}</span>
     <span class="muted">模型</span><span class="chip-muted" id="team-models"></span>
@@ -1056,20 +1071,34 @@ async function pageTeam(params) {
   strategyCard.onclick = () => showSheet("策略測試經理", strategyDetails());
   strategyCard.onkeydown = e => { if(e.key === "Enter" || e.key === " ") { e.preventDefault(); strategyCard.click(); } };
   $("#team-sym").onchange = (e) => { location.hash = `#/team?symbol=${e.target.value}`; };
-  const reportSelect = $("#team-report");
-  reportSelect.onchange = () => {
+  const daySelect = $("#team-day"), reportSelect = $("#team-report");
+  function selectReport(day, id) {
     const query = new URLSearchParams({ symbol: sym });
-    if (reportSelect.value) query.set("report", reportSelect.value);
+    if (day) query.set("date", day);
+    if (id) query.set("report", id);
     location.hash = "#/team?" + query;
-  };
-  let previousChoices = "";
+  }
+  daySelect.onchange = () => selectReport(daySelect.value, "");
+  reportSelect.onchange = () => selectReport(daySelect.value, reportSelect.value);
+  let previousDays = "", previousChoices = "";
   const render = () => {
-    const choices = '<option value="">即時／最新研究</option>' + reportChoices.map(r =>
+    const day = teamDayChoices(reportChoices, selectedDay, selectedReport);
+    const days = '<option value="">即時／最新研究</option>' + day.days.map(d =>
+      `<option value="${esc(d)}">${esc(d)}（台北）</option>`
+    ).join("");
+    if (days !== previousDays) {
+      daySelect.innerHTML = days;
+      daySelect.value = day.day;
+      previousDays = days;
+    }
+    const placeholder = day.day ? "選擇當日報告" : "先選擇日期";
+    const choices = `<option value="">${placeholder}</option>` + day.reports.map(r =>
       `<option value="${esc(r.id)}">${esc(fmtTime(r.created_at))}（台北）・${esc(TRIG[r.trigger] || r.trigger)}</option>`
     ).join("");
     if (choices !== previousChoices) {
       reportSelect.innerHTML = choices;
-      reportSelect.value = reportChoices.some(r => r.id === selectedReport) ? selectedReport : "";
+      reportSelect.value = day.reports.some(r => r.id === selectedReport) ? selectedReport : "";
+      reportSelect.disabled = !day.reports.length;
       previousChoices = choices;
     }
     const done = ROLES.filter((r) => roles[r.key]?.status === "done").length;
@@ -1339,7 +1368,7 @@ async function pageReports(params) {
   const layout = (result, usage, status) => {
     const visible = result.rows.map(row => displayRun(row, status));
     const pager = reportPager(result, "#/reports", "研究報告分頁");
-    return `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${result.count} 份</span></div></div>
+    return `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><a class="btn sm" href="#/reports/training">訓練結果</a><span class="chip-muted">共 ${result.count} 份</span></div></div>
     ${visible.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="第 1 至 5 組，含失敗重試">呼叫次數（依組別）</th><th>耗時</th><th></th></tr></thead><tbody>
     ${visible.map((r) => { const d = DIRS[r.decision] || DIRS.WAIT; const m = r.models || {};
       return `<tr class="run-row" data-sync-key="${esc(r.id)}"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
@@ -1359,25 +1388,64 @@ async function pageReports(params) {
   });
 }
 const REPORT_ORDER = [["pm", "投資組合經理｜最終決策"], ["trader", "交易員｜交易計畫"], ["manager", "研究經理｜研究結論"], ["market", "技術分析師"], ["sentiment", "情緒分析師"], ["news", "加密新聞分析師"], ["onchain", "鏈上 / 衍生品分析師"], ["bull", "多頭研究員"], ["bear", "空頭研究員"], ["aggressive", "積極派風控"], ["conservative", "保守派風控"], ["neutral", "中立派風控"]];
+const TRAINING_HOURS = [1, 4, 24];
+const TRAINING_STATES = {running:"訓練中", complete:"訓練完成", no_new_data:"等待新樣本", insufficient_data:"完整樣本不足", timeout:"訓練逾時", failed:"訓練失敗", interrupted:"訓練中斷"};
+const trainingPct = (value, digits = 2) => Number.isFinite(value) ? (value * 100).toFixed(digits) + "%" : "—";
+const trainingScore = value => Number.isFinite(value) ? value.toFixed(4) : "—";
+
+function trainingPageHTML(data) {
+  const job = data || {};
+  const rows = TRAINING_HOURS.map(hours => {
+    const period = job.horizons?.[hours] || {};
+    const candidate = period.candidate;
+    const adopted = period.adopted_version;
+    const result = candidate ? candidate.version === adopted ? "已採用" : candidate.passed ? "通過，待採用" : "候選未通過" : TRAINING_STATES[period.state] || "等待訓練";
+    return `<tr><th scope="row">${hours} 小時</th><td>${esc(result)}${candidate ? `<br><small class="muted">${esc(candidate.version)}</small>` : ""}</td>
+      <td class="num">${candidate ? `${esc(candidate.train_count)}／${esc(candidate.valid_count)}` : "—"}</td>
+      <td class="num">${candidate ? `${trainingScore(candidate.scores?.brier)}／${trainingScore(candidate.baseline?.brier)}` : "—"}</td>
+      <td class="num">${candidate ? `${trainingPct(candidate.scores?.drawdown)}／${trainingPct(candidate.baseline?.drawdown)}` : "—"}</td>
+      <td class="num">${esc(adopted || "—")}</td></tr>`;
+  }).join("");
+  return `<section class="card"><div class="card-h"><h2>${ICON.report}訓練結果</h2><div class="right"><a class="btn sm" href="#/reports">研究報告</a></div></div>
+    <p>BTCUSDC · LightGBM <span class="chip-muted">${esc(TRAINING_STATES[job.state] || "等待訓練")}</span></p>
+    <p class="note">本輪開始 ${fmtTime(job.started_at)}・完成 ${fmtTime(job.finished_at)}・下輪 ${fmtTime(job.next_at)}（台北）${Number.isFinite(job.elapsed_s) ? `・耗時 ${job.elapsed_s.toFixed(2)} 秒` : ""}</p>
+    <div style="overflow-x:auto"><table class="tbl" style="min-width:680px"><thead><tr><th>週期</th><th>最新候選</th><th>訓練／驗證筆數</th><th>Brier（候選／基準）</th><th>最大回撤（候選／基準）</th><th>採用版本</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="note">Brier 越低表示機率估計越準。最大回撤採無槓桿收盤回放。排程為台北時間 00:17、06:17、12:17、18:17。</p>
+  </section>`;
+}
+
+async function pageTraining() {
+  setTitle("訓練結果", "BTCUSDC・1／4／24 小時");
+  const view = location.hash;
+  const render = async (active) => {
+    const status = await J("status.json");
+    if (view !== location.hash || (active && !active())) return;
+    patchHTML($("#app"), trainingPageHTML(status.market_training));
+  };
+  await render();
+  onData(["status.json"], render);
+}
+
 function marketTrainingHTML(snapshot) {
   if (!snapshot) return "";
-  const pct = (value, digits = 2) => Number.isFinite(value) ? (value * 100).toFixed(digits) + "%" : "—";
-  const p = snapshot.forecast;
-  const score = snapshot.scores;
+  const periods = Object.entries(snapshot.horizons || {24: snapshot});
+  const ready = periods.find(([, item]) => item.forecast)?.[1];
   const states = {waiting:"等待首次訓練完成。", waiting_market:"等待完整的已收線行情。", unavailable:"本次模型預測暫時無法取得。"};
-  const forecast = p && score ? `<p>LightGBM <b>${esc(snapshot.version)}</b>・${snapshot.shadow ? "候選模型" : "已通過驗證"}・並行觀察</p>
-    <p>以 ${fmtTime(new Date(snapshot.anchor_ms).toISOString())}（台北）收盤價 <b>${fmtPrice(snapshot.anchor_price, 2)} USDC</b> 為基準，24 小時收高機率 <b>${pct(p.direction, 1)}</b>。</p>
-    <p>24 小時期間漲幅與跌幅的第 80 百分位預估為 <b>${pct(p.rise)}</b>／<b>${pct(p.fall)}</b>。</p>
-    <p class="note">訓練 ${esc(snapshot.train_count)} 筆・時間順序驗證 ${esc(snapshot.valid_count)} 筆・Brier 分數 ${Number(score.brier).toFixed(4)}（越低越好）・驗證最大回撤 ${pct(score.drawdown)}（24 小時收盤、無槓桿）</p>`
-    : `<p class="note">${esc(states[snapshot.state] || states.unavailable)}</p>`;
+  const forecast = periods.map(([hours, item]) => {
+    const p = item.forecast;
+    return `<tr><th scope="row">${esc(hours)} 小時</th>${p ? `<td class="num">${trainingPct(p.direction, 1)}</td><td class="num">${trainingPct(p.rise)}／${trainingPct(p.fall)}</td><td class="num">${trainingScore(item.scores?.brier)}</td><td>${esc(item.version)}・${item.shadow ? "候選" : "已採用"}</td>` : `<td colspan="4" class="muted">${esc(states[item.state] || states.unavailable)}</td>`}</tr>`;
+  }).join("");
   const review = snapshot.role_review;
   const details = review ? `<details class="din"><summary>近 ${esc(review.days)} 天角色複盤</summary>
     <p class="note">市場方向從報告完成後第一個整點開始比對 24 小時收盤。方向欄只統計有結構化方向的案例。</p>
     <table class="tbl"><thead><tr><th>角色</th><th>已核對案例</th><th>方向吻合／可評估</th></tr></thead><tbody>
     ${(review.roles || []).map(row => `<tr><td>${esc(ROLE_NAME[row.role] || row.role)}</td><td>${esc(row.cases)}</td><td>${row.scored ? esc(row.correct + "／" + row.scored) : "—"}</td></tr>`).join("")}</tbody></table>
     ${(review.accounts || []).map(a => `<p class="note">策略測試經理・${esc(a.name)}：已平倉 ${esc(a.closed)} 筆，獲利 ${esc(a.wins)} 筆，淨損益 ${fmtPrice(a.pnl, 2)} USDC。</p>`).join("")}
-    ${(review.examples || []).map(x => `<p class="note"><a class="ok" href="#/report/${encodeURIComponent(x.report_id)}">${fmtTime(new Date(x.anchor_ms).toISOString())} 複盤案例</a>・24 小時漲跌 ${pct(x.return)}</p>`).join("")}</details>` : "";
-  return `<section class="card" style="margin-top:16px"><div class="card-h"><h2>BTC 市場模型｜24 小時預測</h2></div>${forecast}${details}</section>`;
+    ${(review.examples || []).map(x => `<p class="note"><a class="ok" href="#/report/${encodeURIComponent(x.report_id)}">${fmtTime(x.anchor_ms)} 複盤案例</a>・24 小時漲跌 ${trainingPct(x.return)}</p>`).join("")}</details>` : "";
+  const title = periods.map(([hours]) => esc(hours)).join("／");
+  return `<section class="card" style="margin-top:16px"><div class="card-h"><h2>BTC 市場模型｜${title} 小時預測</h2><div class="right"><a class="btn sm" href="#/reports/training">訓練結果</a></div></div>
+    ${ready ? `<p class="note">以 ${fmtTime(ready.anchor_ms)}（台北）收盤價 <b>${fmtPrice(ready.anchor_price, 2)} USDC</b> 為基準。LightGBM 預測供並行觀察。</p>` : ""}
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>週期</th><th>收高機率</th><th>最大漲／跌幅 P80</th><th>Brier</th><th>模型</th></tr></thead><tbody>${forecast}</tbody></table></div>${details}</section>`;
 }
 async function pageReport(id) {
   const view = location.hash;
@@ -1535,6 +1603,7 @@ async function route() {
     else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper("test1", params); }
     else if (path === "/paper/test2") { renderNav("paper"); await pageNewPaper("test2", params); }
     else if (path === "/reports") { renderNav("reports"); await pageReports(params); }
+    else if (path === "/reports/training") { renderNav("reports"); await pageTraining(); }
     else if ((m = path.match(/^\/report\/(.+)$/))) { renderNav("reports"); await pageReport(decodeURIComponent(m[1])); }
     else if (path === "/settings") { renderNav("settings"); await pageSettings(); }
     else { location.hash = "#/"; }
