@@ -731,7 +731,7 @@ async function pageCoin(sym, params) {
       <div class="chart-box" id="sub-chart"></div>
     </section>
     <section class="card" id="coin-verdict">
-      <div class="card-h"><h2>${ICON.spark}AI 綜合觀點</h2><div class="right">${s.ai ? `<a class="btn sm" href="#/report/${encodeURIComponent(s.ai.id)}">完整報告</a>${s.ai.pdf_url ? `<a class="btn sm" target="_blank" href="${esc(s.ai.pdf_url)}">PDF</a>` : ""}` : `<span class="chip-muted">尚未分析</span>`}</div></div>
+      <div class="card-h"><h2>${ICON.spark}AI 綜合觀點</h2><div class="right">${s.ai ? `<a class="btn sm" href="#/report/${encodeURIComponent(s.ai.id)}">完整報告</a>` : `<span class="chip-muted">尚未分析</span>`}</div></div>
       ${verdictHTML(s.ai, `<div class="v-side"><small>持有期間</small><b>${holdTxt(s.ai?.settings?.holding_period_days ?? s.ai?.result?.settings?.holding_period_days ?? 1)}</b><small>研究評等 ${esc(s.ai?.result?.research_rating || "—")}</small></div>`)}
       <div class="sub-h" style="color:var(--ink);font-size:14px;font-weight:700">綜合理由</div>
       <p class="muted" style="margin:0;font-size:13px;line-height:1.65">${s.ai ? esc(s.ai.result?.decision?.executive_summary || "") : "尚未執行 AI 分析。由 12 位 AI 代理（技術、情緒、加密新聞、鏈上 / 衍生品分析師，多空辯論與風控審核）分析後，結論與理由會顯示在這裡。"}</p>
@@ -1286,8 +1286,8 @@ async function pageReports(params) {
         <td class="num">${r.status === "done" ? `${fmtLv(r.entry)} / <span class="down">${fmtLv(r.stop)}</span> / <span class="up">${fmtLv(r.take_profit)}</span>` : "—"}</td>
         <td class="muted num" style="font-size:12px">${m.quick ? `${esc(m.quick.used)}（槽位 ${m.quick.key_slot ?? "—"}）<br>${esc(m.deep.used)}（槽位 ${m.deep.key_slot ?? "—"}）${m.quick.fallback_reason ? '<br><span class="warn">快速已切換備援</span>' : ""}${m.deep.fallback_reason ? '<br><span class="warn">深度已切換備援</span>' : ""}` : "—"}</td>
         <td class="num" style="white-space:nowrap" title="${esc(callsTitle(r.calls))}">${fmtCalls(r.calls)}${r.calls?.reconstructed ? '<span class="warn" title="原始執行的呼叫次數由紀錄還原">＊</span>' : ""}</td><td class="num">${r.duration_s ? Math.round(r.duration_s) + " 秒" : "—"}</td>
-        <td class="c">${r.status === "done" ? `<a class="ok" href="#/report/${encodeURIComponent(r.id)}">查看</a>` : ""}${r.pdf_url ? `・<a class="ok" target="_blank" href="${esc(r.pdf_url)}">PDF</a>` : ""}</td></tr>`; }).join("")}
-    </tbody></table>` : `<div class="empty-state" style="height:180px">${ICON.report}<b>尚未執行 AI 分析</b><small>每次 AI 團隊分析完成都會產生一份繁體中文報告（含 PDF），列在這裡。</small></div>`}${pager}</section>`;
+        <td class="c">${r.status === "done" ? `<a class="ok" href="#/report/${encodeURIComponent(r.id)}">查看</a>` : ""}</td></tr>`; }).join("")}
+    </tbody></table>` : `<div class="empty-state" style="height:180px">${ICON.report}<b>尚未執行 AI 分析</b><small>AI 團隊的繁體中文研究報告會列在這裡。</small></div>`}${pager}</section>`;
   };
   const view = location.hash, data = await load();
   if (view !== location.hash) return;
@@ -1307,7 +1307,7 @@ async function pageReport(id) {
   const srcs = Object.entries(r.sources || {});
   $("#app").innerHTML = `<div style="display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;align-items:start">
     <div>
-      <section class="card"><div class="card-h"><h2>${coinIcon(baseOf(r.symbol), 26)}${esc(r.name)}（${esc(r.symbol)}）AI 短線分析</h2><div class="right">${r.pdf_url ? `<a class="btn sm mint" target="_blank" href="${esc(r.pdf_url)}">下載 PDF</a>` : ""}${r.html_url ? `<a class="btn sm" target="_blank" href="${esc(r.html_url)}">網頁版報告</a>` : ""}<a class="btn sm" href="#/coin/${r.symbol}">幣種研究</a></div></div>
+      <section class="card"><div class="card-h"><h2>${coinIcon(baseOf(r.symbol), 26)}${esc(r.name)}（${esc(r.symbol)}）AI 短線分析</h2><div class="right">${r.html_url ? `<a class="btn sm" target="_blank" href="${esc(r.html_url)}">網頁版報告</a>` : ""}<a class="btn sm" href="#/coin/${r.symbol}">幣種研究</a></div></div>
         ${verdictHTML(r, `<div class="v-side"><small>當時價格</small><b class="num">${fmtPrice(r.price_at_run, 2)}</b><small>研究評等 ${esc(res.research_rating || "—")}</small></div>`)}
         <p class="ai-sum">${esc(dec.executive_summary || "")}</p>${originalActionHTML(dec,res.execution)}
         <div class="factors"><div class="bull"><h4 class="up">看多因素</h4><ul>${(dec.bull_factors || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div><div class="bear"><h4 class="down">看空因素</h4><ul>${(dec.bear_factors || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>
