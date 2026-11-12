@@ -1,4 +1,6 @@
-/* 測試1號與團隊策略共用 trade-ui.js；公開頁面只讀。 */
+/* 各測試帳戶與團隊策略共用 trade-ui.js。 */
+const STRATEGY_ACCOUNTS = {test1: "測試1號", test2: "測試2號", test3: "測試3號"};
+const strategyRoute = account => "#/paper/" + (account === "test1" ? "new" : account);
 const NEW_ACTIONS = {EVALUATION_FAILED:"評估失敗",REVERSE_LONG:"停損反手做多",REVERSE_SHORT:"停損反手做空",OPEN_LONG:"新開多單",OPEN_SHORT:"新開空單",ADD:"加倉",HOLD:"續抱",WAIT:"觀望",PAUSE_ADD:"暫停加倉",CANCEL_ENTRY:"取消委託",REDUCE:"部分減倉",CLOSE:"全部平倉",UPDATE_PROTECTION:"調整獲利保護"};
 function originalActionHTML(dec, execution) {
   const names={WAIT:"觀望",OPEN:"新開倉",HOLD:"續抱",CLOSE:"只平倉",REVERSE:"反手",UPDATE_RISK:"調整保護",CANCEL_ORDER:"取消委託"};
@@ -22,11 +24,11 @@ function liquidationHTML(dv) {
   return `<span class="down">${money(q.long)}</span> / <span class="up">${money(q.short)}</span><small class="liq-meta ${q.stale?"warn":"muted"}">${esc(q.inst)}・${esc(q.status)}・${q.n} 筆<br>更新 ${fmtTime(q.last_success_ms)}（台北）・約涵蓋 ${Number(q.hours || 0).toFixed(1)}h<br>${esc(q.note)}</small>`;
 }
 function strategyManagerHTML(P) {
-  if(!P)return '<p class="note">測試1號狀態尚未推送。</p>';
+  if(!P)return '<p class="note">策略測試經理狀態尚未推送。</p>';
   const m=P.manager || {}, d=P.decisions?.[0], cfg=P.settings || {}, binding=P.binding;
   const backup=cfg.strategy_backup?.model||cfg.model||"gemini-3.5-flash-lite";
   const luna=cfg.hourly_luna_only?"00、30 分":"每半小時優先";
-  return `<p>${esc(m.message || "等待初始化")}</p><dl class="manager-details"><dt>評估 API</dt><dd>${cfg.hourly_luna_active ? esc(luna)+"用 GPT-6 Luna（"+esc(cfg.hourly_luna_thinking || "high")+"），失敗由 "+esc(backup)+" 補評" : "第 4 組 Gemini"}</dd><dt>例行主模型</dt><dd>${esc(cfg.model || "gemini-3.5-flash-lite")}</dd><dt>例行備援模型</dt><dd>${esc(cfg.fallback_model || "gemini-3.1-flash-lite")}</dd><dt>評估狀態</dt><dd>${m.busy ? "評估中" : esc(m.message || "等待")}</dd><dt>最近評估</dt><dd>${m.last_evaluated ? fmtTime(m.last_evaluated*1000) : "尚未評估"}${m.model ? `・${esc(m.model)}` : ""}</dd><dt>報告標的</dt><dd>${binding ? esc(binding.symbol) : "等待研究報告"}</dd><dt>最新決策</dt><dd>${d ? `${esc(NEW_ACTIONS[d.action] || d.action)}・${fmtTime(d.created_ms)}<br>${esc(d.reason)}` : "尚無決策紀錄"}</dd></dl>${binding ? `<a class="ok" href="#/report/${encodeURIComponent(binding.run_id)}">對應研究報告 ›</a>` : ""}<p class="note">每五分鐘只評估當前報告標的，先對照上一份同標的研究與各自帳戶實際結果；已填 RPD 時按預算降頻。報告最多沿用兩小時；過期後暫停新增曝險，既有持倉仍依最新行情評估，停利、資金費及強平持續運作。兩個測試共用評估，分別記錄結果。</p>`;
+  return `<p>${esc(m.message || "等待初始化")}</p><dl class="manager-details"><dt>評估 API</dt><dd>${cfg.hourly_luna_active ? esc(luna)+"用 GPT-6 Luna（"+esc(cfg.hourly_luna_thinking || "high")+"），失敗由 "+esc(backup)+" 補評" : "第 4 組 Gemini"}</dd><dt>例行主模型</dt><dd>${esc(cfg.model || "gemini-3.5-flash-lite")}</dd><dt>例行備援模型</dt><dd>${esc(cfg.fallback_model || "gemini-3.1-flash-lite")}</dd><dt>評估狀態</dt><dd>${m.busy ? "評估中" : esc(m.message || "等待")}</dd><dt>最近評估</dt><dd>${m.last_evaluated ? fmtTime(m.last_evaluated*1000) : "尚未評估"}${m.model ? `・${esc(m.model)}` : ""}</dd><dt>報告標的</dt><dd>${binding ? esc(binding.symbol) : "等待研究報告"}</dd><dt>最新決策</dt><dd>${d ? `${esc(NEW_ACTIONS[d.action] || d.action)}・${fmtTime(d.created_ms)}<br>${esc(d.reason)}` : "尚無決策紀錄"}</dd></dl>${binding ? `<a class="ok" href="#/report/${encodeURIComponent(binding.run_id)}">對應研究報告 ›</a>` : ""}<p class="note">每五分鐘只評估當前報告標的，先對照上一份同標的研究與各自帳戶實際結果；已填 RPD 時按預算降頻。報告最多沿用兩小時；過期後暫停新增曝險，既有持倉仍依最新行情評估，停利、資金費及強平持續運作。三個測試共用經理及評估排程，各自記帳。</p>`;
 }
 function previousReviewHTML(review, link = true) {
   if(!review)return "";
@@ -37,8 +39,44 @@ function previousReviewHTML(review, link = true) {
   return `<section class="card new-section"><div class="card-h"><h2>前次研究與實際結果回顧</h2></div><p>${reference}</p><p>先前方向 ${esc(previous.decision || "—")}・觀測最高 ${fmtPrice(market.high)}／最低 ${fmtPrice(market.low)}・${review.horizon_matured ? "已到原定觀察期限，仍依實際成交判讀" : "階段檢討，尚不提前判定整份報告成敗"}</p><p class="note">${esc(market.coverage || review.note || "回顧資料不足時如實保留未知。")}</p><p class="note">對照前次理由與已保存成交，由各角色說明本次延續或修正的證據；價格觸及不等於實際成交。</p></section>`;
 }
 function strategyBranchHTML(P, details = strategyManagerHTML(P)) {
-  return `<div class="strategy-branch"><div class="branch-node" id="strategy-research"><h3>團隊市場研究報告</h3><p>四位分析師、多空研究員、研究經理的研究摘要</p><small class="muted">供兩個測試帳戶參考市場背景</small></div><span class="branch-arrow" aria-hidden="true">→</span><div class="agent branch-node" id="ag-new-strategy" role="button" tabindex="0" aria-label="策略測試經理：查看評估狀態"><div class="ah"><span class="ai">${ICON.brief}</span><span class="an">策略測試經理</span></div>${details}</div><span class="branch-arrow" aria-hidden="true">→</span><div class="branch-node"><h3>測試1號／測試2號</h3><b class="num">各 10,000 USDC</b><p>獨立資金與持倉<br>只處理報告標的</p><a class="ok" href="#/paper/new">查看測試1號 ›</a> <a class="ok" href="#/paper/test2">查看測試2號 ›</a></div><p class="branch-note note">原團隊 12 位維持原流程，只裁決 AI 團隊策略；策略測試經理獨立評估，不計入上方 12 位研究進度。</p></div>`;
+  return `<div class="strategy-branch"><div class="branch-node" id="strategy-research"><h3>團隊市場研究報告</h3><p>四位分析師、多空研究員、研究經理的研究摘要</p><small class="muted">供三個測試帳戶參考市場背景</small></div><span class="branch-arrow" aria-hidden="true">→</span><div class="agent branch-node" id="ag-new-strategy" role="button" tabindex="0" aria-label="策略測試經理：查看評估狀態"><div class="ah"><span class="ai">${ICON.brief}</span><span class="an">策略測試經理</span></div>${details}</div><span class="branch-arrow" aria-hidden="true">→</span><div class="branch-node"><h3>測試1號／2號／3號</h3><b class="num">各 10,000 USDC</b><p>獨立資金與持倉<br>只處理報告標的</p><a class="ok" href="#/paper/new">查看測試1號 ›</a> <a class="ok" href="#/paper/test2">查看測試2號 ›</a> <a class="ok" href="#/paper/test3">查看測試3號 ›</a></div><p class="branch-note note">原團隊 12 位維持原流程，只裁決 AI 團隊策略；策略測試經理獨立評估，不計入上方 12 位研究進度。</p></div>`;
 }
+function strategyAdviceHTML(advice) {
+  if (!advice) return "";
+  const state = {waiting_training: "等待首次模型訓練", waiting_market: "等待完整已收線行情", paused: "模型建議暫停觀察"};
+  if (advice.state !== "ready") return `<p class="note">LightGBM・${state[advice.state] || "尚無建議"}</p>`;
+  const actions = Object.entries(advice.net_return_pct || {}).map(([action, score]) =>
+    `${esc(NEW_ACTIONS[action] || action)} ${fmtPct(score)}`).join("・");
+  return `<p class="note">LightGBM 30 分鐘建議・${esc(NEW_ACTIONS[advice.action] || "無可比較動作")}
+    ${actions ? `<br>估計名目淨報酬 ${actions}` : ""}</p>`;
+}
+
+function strategyComparisonHTML(account) {
+  const result = account.comparison, model = account.learning?.active, job = account.learning?.job;
+  const stats = result?.samples > 1 && result.test2 && result.test3;
+  const percent = value => Number.isFinite(value) ? fmtPct(value * 100) : "—";
+  const state = {running: "訓練中", failed: "訓練未完成", timeout: "訓練逾時", insufficient_data: "回放樣本不足"};
+  const phase = {qualified:"已通過實際對照", paused:"暫停建議", reverted:"已退回前版"};
+  return `<section class="card new-section"><div class="card-h"><h2>測試2號與3號對照</h2>
+    <span class="chip-muted">${phase[model?.phase] || (model ? "LightGBM 觀察中" : state[job?.state] || "等待訓練")}</span></div>
+    ${stats ? `<p class="note">${fmtTime(result.start_ms)} 至 ${fmtTime(result.end_ms)}（台北）・${result.samples} 個共同取樣點</p>
+    <table class="tbl training-comparison"><thead><tr><th>帳戶</th><th>淨報酬</th><th>最大回撤</th></tr></thead><tbody>
+    ${["test2","test3"].map(id => `<tr><th scope="row">${STRATEGY_ACCOUNTS[id]}</th><td>${percent(result[id].net_return)}</td><td>${percent(result[id].drawdown)}</td></tr>`).join("")}
+    </tbody></table><p class="note">以同一時間的標記價及各自期初權益計算，含未實現損益及資金費。${result.model_versions > 1 ? `此期間包含 ${result.model_versions} 版建議模型。` : ""}</p>`
+    : '<p class="note">等待累積同時段權益，已有資料會按相同起訖時間比較。</p>'}
+    ${model ? `<details><summary>模型訓練資料</summary><p class="note">30 分鐘回放・訓練 ${model.training_windows} 段・驗證 ${model.validation_windows} 段・另用實際已結算模擬成交 ${model.actual_samples} 筆。</p>
+    <p class="note">回放淨報酬 ${percent(model.scores?.net_return)}・最大回撤 ${percent(model.scores?.drawdown)}。市場建議由策略測試經理核對後決定。</p></details>` : ""}
+  </section>`;
+}
+
+function strategyLessonsHTML(rules) {
+  const statuses = {active: "採用中", pending: "待核對", retired: "已退回"};
+  const stages = {entry: "進場", holding: "持倉", exit: "出場"};
+  return `<details><summary>交易複盤與策略調整</summary>${rules?.length ? rules.map(rule =>
+    `<p><b>${stages[rule.stage]}・${statuses[rule.status]}</b>・原始案例 ${rule.cases} 筆、後續核對 ${rule.verified_cases} 筆<br>
+      ${esc(rule.condition)}<br>${esc(rule.adjustment)}</p>`).join("") : '<p class="note">等待同類已結算成交累積。</p>'}</details>`;
+}
+
 function strategyReportBody(report) {
   const decision = report.decision || {};
   const fields = [
@@ -58,10 +96,10 @@ function strategyReportBody(report) {
   return `<dl class="manager-details">
     ${fields.filter(([, value]) => value).map(([label, value]) => `<dt>${label}</dt><dd>${esc(value)}</dd>`).join("")}
     ${plan.map(([label, value]) => `<dt>${label}</dt><dd>${esc(value)}</dd>`).join("")}
-    </dl>${previousReviewHTML(report.review, false)}`;
+    </dl>${strategyAdviceHTML(report.lightgbm)}${previousReviewHTML(report.review, false)}`;
 }
 function strategyReportsHTML(result, account) {
-  const route = account === "test2" ? "#/paper/test2" : "#/paper/new";
+  const route = strategyRoute(account);
   const rows = result.rows.map(report => {
     const action = NEW_ACTIONS[report.action] || report.action || "—";
     const status = {done: "已處理", failed: "評估失敗", skipped: "未執行"}[report.status] || "未執行";
@@ -96,14 +134,15 @@ function bindStrategyReports() {
 }
 async function pageNewPaper(account = "test1", params = new URLSearchParams()) {
   const view = location.hash;
-  const selectAccount = data => account === "test2" ? data.test2 : data;
-  let P = selectAccount(await J("new-paper.json"));
+  const selectAccount = data => account === "test1" ? data : data[account];
+  let snapshot = await J("new-paper.json");
+  let P = selectAccount(snapshot);
   if (view !== location.hash) return;
-  if(!P){$("#app").innerHTML='<div class="empty-state"><b>等待測試2號帳戶資料</b><small>請在本機更新後等待正常推送。</small></div>';return;}
+  if(!P){$("#app").innerHTML=`<div class="empty-state"><b>等待${STRATEGY_ACCOUNTS[account]}帳戶資料</b></div>`;return;}
   const loadReports = state => catalogPage(account, Number(params.get("page")), () => state.decisions || []);
   let reports = await loadReports(P);
   if (view !== location.hash) return;
-  const test2=P.strategy_id === "test2", name=test2 ? "測試2號" : "測試1號";
+  const test2=account !== "test1", name=STRATEGY_ACCOUNTS[account];
   setTitle(name, "獨立虛擬帳戶");
   const n=(v,d=2)=>v == null ? "—" : Number(v).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
   const money=v=>v == null ? "—" : `${v>0?"+":""}${n(v)}`;
@@ -113,14 +152,15 @@ async function pageNewPaper(account = "test1", params = new URLSearchParams()) {
   const closedCycles = () => P.cycles.filter(c=>c.status === "closed").sort((a,b)=>b.close_ms-a.close_ms);
   const layout = () => `<div class="ro-banner">${name}・獨立虛擬 ${n(P.initial)} USDC・只做模擬</div>
     <div class="grid-4"><div class="card kcard"><small>目前權益（含未實現）</small><div class="row"><span class="big num" id="new-eq">${n(P.equity)}</span></div><small>可用資金 ${n(P.available)} USDC</small></div><div class="card kcard"><small>已實現損益（含資金費）</small><div class="row"><span class="big num ${signCls(P.realized_pnl)}">${money(P.realized_pnl)}</span></div><small>資金費 ${money(P.funding_net)} USDC</small></div><div class="card kcard"><small>勝率</small><div class="row"><span class="big num">${P.win_rate == null ? "—" : n(P.win_rate)+"%"}</span></div><small>${P.wins} 勝／${P.trades} 筆已平倉</small></div><div class="card kcard"><small>最大回撤（已實現權益）</small><div class="row"><span class="big num down">${n(P.max_drawdown_pct)}%</span></div><small>模擬強平 ${P.liquidations} 次</small></div></div>
+    ${account === "test3" ? strategyComparisonHTML(P) : ""}
     ${tradePanelHTML(P.open.length,P.pending.length)}
     <section class="card new-section"><div class="card-h"><h2>${ICON.trendUp}權益曲線</h2><span class="chip-muted">已實現權益・含資金費</span></div><div id="new-eq-chart"></div></section>
     ${P.engine.last_error || P.engine.protection_warning ? `<div class="callout"><b>模擬帳戶狀態</b><span>${esc(P.engine.last_error || P.engine.protection_warning)}</span></div>` : ""}
     ${strategyReportsHTML(reports, account)}
-    <section class="card new-manager"><div class="card-h"><h2>${ICON.brief}策略測試經理</h2><span class="chip-muted">${P?.settings?.hourly_luna_active ? "GPT-6 Luna" : "第 4 組・Flash-Lite"}</span></div>${strategyManagerHTML(P)}</section>`;
+    <section class="card new-manager"><div class="card-h"><h2>${ICON.brief}策略測試經理</h2><span class="chip-muted">${P?.settings?.hourly_luna_active ? "GPT-6 Luna" : "第 4 組・Flash-Lite"}</span></div>${strategyManagerHTML(P)}${strategyLessonsHTML(snapshot.lessons?.[test2 ? "test2" : "averaging"])}</section>`;
   $("#app").innerHTML = layout();
   bindStrategyReports();
-  const pos=open=>open.length ? `<div class="table-scroll"><table class="tbl pos-tbl"><thead><tr><th>合約</th><th>數量</th><th>持倉均價</th><th>標記價格</th><th>強平價格</th><th>累計保證金</th><th>淨盈虧（收益率）</th><th>${test2 ? "回本價（扣已實現損益）" : "停利價格／目標"}</th><th>${test2 ? "已實現調整損益" : "下次加倉候選價"}</th><th></th></tr></thead><tbody>${open.map(c=>`<tr><td>${contract(c)}</td><td>${n(c.qty,6)}</td><td>${fmtPrice(c.avg_price)}</td><td data-new-mark="${c.id}">${fmtPrice(c.mark_price)}</td><td class="warn">${fmtPrice(c.liq_price)}</td><td>${n(c.margin)} USDC</td><td data-new-pnl="${c.id}">${money(c.unrealized)}</td><td class="num">${test2 ? fmtPrice(c.break_even_price) : fmtPrice(c.take_profit)+"／"+n(c.margin*.1)+" USDC"}</td><td>${test2 ? money(c.realized_partial || 0)+" USDC" : fmtPrice(c.next_add_price)}${c.add_paused ? '<br><small>AI 暫停加倉</small>' : ""}</td><td>${report(c)}</td></tr><tr class="position-legs" data-sync-key="legs-${c.id}"><td colspan="10">${legs(c)}</td></tr>`).join("")}</tbody></table></div><div class="pos-cards new-pos-cards">${open.map(c=>`<article class="pcard" data-sync-key="pos-${c.id}"><div class="pc-h">${contract(c)}</div><div class="pc-pnl"><div><small>淨盈虧（收益率）</small><b data-new-pnl="${c.id}">${money(c.unrealized)} USDC</b></div></div><dl class="mobile-pos-grid">${[["數量",n(c.qty,6)],["持倉均價",fmtPrice(c.avg_price)],["標記價格",`<span data-new-mark="${c.id}">${fmtPrice(c.mark_price)}</span>`],["強平價格",fmtPrice(c.liq_price)],["累計保證金",n(c.margin)+" USDC"],[test2?"回本價（扣已實現）":"停利價格",fmtPrice(test2?c.break_even_price:c.take_profit)],[test2?"已實現調整損益":"獲利目標",test2?money(c.realized_partial || 0)+" USDC":n(c.margin*.1)+" USDC"],[test2?"加倉時機":"下次加倉候選價",test2?"AI 決定":fmtPrice(c.next_add_price)]].map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>${c.add_paused?'<p class="warn">AI 暫停加倉</p>':""}${legs(c)}<div class="pc-foot">${report(c)}</div></article>`).join("")}</div>` : '<div class="empty-state"><b>目前沒有倉位</b><small>AI 依報告標的決定進場或觀望；不保證每次評估都掛單。</small></div>';
+  const pos=open=>open.length ? `<div class="table-scroll"><table class="tbl pos-tbl"><thead><tr><th>合約</th><th>數量</th><th>持倉均價</th><th>標記價格</th><th>強平價格</th><th>累計保證金</th><th>淨盈虧（收益率）</th><th>${test2 ? "回本價（扣已實現損益）" : "停利價格／目標"}</th><th>${test2 ? "已實現調整損益" : "下次加倉候選價"}</th><th></th></tr></thead><tbody>${open.map(c=>`<tr><td>${contract(c)}</td><td>${n(c.qty,6)}</td><td>${fmtPrice(c.avg_price)}</td><td data-new-mark="${c.id}">${fmtPrice(c.mark_price)}</td><td class="warn">${fmtPrice(c.liq_price)}</td><td>${n(c.margin)} USDC</td><td data-new-pnl="${c.id}">${money(c.unrealized)}</td><td class="num">${test2 ? fmtPrice(c.break_even_price) : fmtPrice(c.take_profit)+"／"+n(c.margin*.03)+" USDC"}</td><td>${test2 ? money(c.realized_partial || 0)+" USDC" : fmtPrice(c.next_add_price)}${c.add_paused ? '<br><small>AI 暫停加倉</small>' : ""}</td><td>${report(c)}</td></tr><tr class="position-legs" data-sync-key="legs-${c.id}"><td colspan="10">${legs(c)}</td></tr>`).join("")}</tbody></table></div><div class="pos-cards new-pos-cards">${open.map(c=>`<article class="pcard" data-sync-key="pos-${c.id}"><div class="pc-h">${contract(c)}</div><div class="pc-pnl"><div><small>淨盈虧（收益率）</small><b data-new-pnl="${c.id}">${money(c.unrealized)} USDC</b></div></div><dl class="mobile-pos-grid">${[["數量",n(c.qty,6)],["持倉均價",fmtPrice(c.avg_price)],["標記價格",`<span data-new-mark="${c.id}">${fmtPrice(c.mark_price)}</span>`],["強平價格",fmtPrice(c.liq_price)],["累計保證金",n(c.margin)+" USDC"],[test2?"回本價（扣已實現）":"停利價格",fmtPrice(test2?c.break_even_price:c.take_profit)],[test2?"已實現調整損益":"獲利目標",test2?money(c.realized_partial || 0)+" USDC":n(c.margin*.03)+" USDC"],[test2?"加倉時機":"下次加倉候選價",test2?"AI 決定":fmtPrice(c.next_add_price)]].map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join("")}</dl>${c.add_paused?'<p class="warn">AI 暫停加倉</p>':""}${legs(c)}<div class="pc-foot">${report(c)}</div></article>`).join("")}</div>` : '<div class="empty-state"><b>目前沒有倉位</b><small>AI 依報告標的決定進場或觀望；不保證每次評估都掛單。</small></div>';
   let tab=(pageNewPaper.state?.[account]?.tab) || "pos", range=(pageNewPaper.state?.[account]?.range) || "3m";
   const pages=pageNewPaper.state?.[account]?.pages || {};
   const ranges=[["1d","一天",1],["1w","一週",7],["1m","一個月",30],["3m","三個月",90]];
@@ -134,13 +174,15 @@ async function pageNewPaper(account = "test1", params = new URLSearchParams()) {
   const renderCurve = () => { const points=[];for(const p of P.curve){const pt={time:Math.floor(p.t/1000)+TZ_SHIFT,value:p.equity};if(points.length && points.at(-1).time === pt.time)points[points.length-1]=pt;else points.push(pt);}if(!points.length)points.push({time:Math.floor(Date.now()/1000)+TZ_SHIFT,value:P.initial});series.setData(points); };
   renderCurve(); series.createPriceLine({price:P.initial,color:"#929aa5",lineStyle:2,axisLabelVisible:false,title:"起始"});chart.timeScale().fitContent();
   onData(["new-paper.json", catalogFile(account)], async (active) => {
-    const next = selectAccount(await J("new-paper.json"));
+    const data = await J("new-paper.json");
+    const next = selectAccount(data);
     if (!next || !active()) return;
     const nextReports = await loadReports(next);
     if (!active()) return;
     const changedAccount = next !== P;
     const visible = chart.timeScale().getVisibleLogicalRange();
     P = next;
+    snapshot = data;
     reports = nextReports;
     patchHTML($("#app"), layout(), "#new-eq-chart,#pp-body,#new-eq,.strategy-report-body");
     bindStrategyReports();
