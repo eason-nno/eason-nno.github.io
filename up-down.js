@@ -71,6 +71,8 @@ function upDownPeriodHTML(minutes, data = {}) {
         ? [["停止交易", upDownTime(market.trade_ends_at)]] : []),
       ["漲 最高買價／最低賣價", `${upDownNumber(market.up_bid, 3)}／${upDownNumber(market.up_ask, 3)}`],
       ["跌 最高買價／最低賣價", `${upDownNumber(market.down_bid, 3)}／${upDownNumber(market.down_ask, 3)}`],
+      ...(typeof market.up_indicative === "number" || typeof market.down_indicative === "number"
+        ? [["漲／跌 參考份額價", `${upDownNumber(market.up_indicative, 3)}／${upDownNumber(market.down_indicative, 3)}`]] : []),
       ["吃單費率（基準）", buyFee === "—" ? buyFee : buyFee + "%"], ["行情時間", upDownTime(market.updated_at)],
     ])}</dl>` : '<p class="dim">尚無可核對的合約行情</p>'}
     <div class="up-down-subsection"><h3>最新決策</h3>
