@@ -14,6 +14,40 @@ const UP_DOWN_TRAINING = {
 };
 const UP_DOWN_PAGE_SIZE = 10;
 
+function upDownStatusLabel(status) {
+  return Object.hasOwn(UP_DOWN_STATES, status) ? UP_DOWN_STATES[status] : "待確認";
+}
+
+function upDownTrainingLabel(training) {
+  const state = training?.status ?? training?.state;
+  return Object.hasOwn(UP_DOWN_TRAINING, state) ? UP_DOWN_TRAINING[state] : "尚無訓練結果";
+}
+
+function upDownManagerHTML(snapshot) {
+  const periods = new Map((Array.isArray(snapshot?.periods) ? snapshot.periods : []).map(period => [period.minutes, period]));
+  const items = Array.from(UP_DOWN_PERIODS, ([minutes, label]) => {
+    const data = periods.get(minutes);
+    const decision = data?.decision;
+    const decisionText = [upDownAction(decision?.action), decision?.model, upDownTime(decision?.at)]
+      .filter(value => value && value !== "—").join("・");
+    return `<li><b>${label}</b><span>${esc(upDownTrainingLabel(data?.training))}・${esc(decisionText || "尚無決策")}</span></li>`;
+  }).join("");
+  return `<p class="up-down-team-status"><span class="pill gray">${snapshot ? upDownStatusLabel(snapshot.status) : "尚無同步資料"}</span>${snapshot?.status_reason ? ` ${esc(snapshot.status_reason)}` : ""}</p>
+    <ul class="up-down-team-periods">${items}</ul>
+    ${upDownTime(snapshot?.updated_at) !== "—" ? `<p class="note">狀態更新 ${esc(upDownTime(snapshot.updated_at))}（台北）</p>` : ""}`;
+}
+
+function upDownBranchHTML() {
+  return `<section class="strategy-branch up-down-team" aria-label="BTC 漲跌合約流程">
+    <div class="branch-node"><h3>幣安 BTC 漲跌場次</h3><p>場次資料、參考價格與官方結算</p></div>
+    <span class="branch-arrow" aria-hidden="true">→</span>
+    <article class="agent branch-node" id="ag-updown-manager"><div class="ah"><span class="ai">${ICON.scale}</span><h3 class="an">漲跌合約經理</h3><span class="chip-muted">即時狀態</span></div>
+      <div id="up-down-team-status">${upDownManagerHTML(null)}</div></article>
+    <span class="branch-arrow" aria-hidden="true">→</span>
+    <div class="branch-node"><h3>漲跌合約模擬帳戶</h3><p>三個 BTC 週期共用帳戶</p><a class="ok" href="${UP_DOWN_ROUTE}">查看漲跌合約 ›</a></div>
+  </section>`;
+}
+
 function upDownNumber(value, digits = 2) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   return value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -59,7 +93,6 @@ function upDownPeriodHTML(minutes, data = {}) {
   const probability = typeof decision?.probability === "number" && decision.probability >= 0 && decision.probability <= 1
     ? `${upDownNumber(decision.probability * 100, 1)}%` : "—";
   const buyFee = upDownNumber(typeof market?.taker_fee_bps === "number" ? market.taker_fee_bps / 100 : null, 3);
-  const trainingState = training?.status ?? training?.state;
   return `<article class="card up-down-period" data-sync-key="up-down-period-${minutes}">
     <div class="up-down-heading"><h2>${UP_DOWN_PERIODS.get(minutes)}</h2>${market?.market_id ? `<small title="${esc(market.market_id)}">合約 ${esc(market.market_id)}</small>` : ""}</div>
     ${market ? `<dl class="up-down-metrics">${upDownFields([
@@ -84,7 +117,7 @@ function upDownPeriodHTML(minutes, data = {}) {
       : '<p class="dim">尚無決策</p>'}</div>
     <div class="up-down-subsection"><h3>訓練狀態</h3>
       ${training ? `<dl class="up-down-metrics">${upDownFields([
-        ["狀態", Object.hasOwn(UP_DOWN_TRAINING, trainingState) ? UP_DOWN_TRAINING[trainingState] : "尚無可用結果"],
+        ["狀態", upDownTrainingLabel(training)],
         ["訓練／驗證筆數", `${upDownNumber(training.training_count ?? training.training_samples, 0)}／${upDownNumber(training.validation_count ?? training.validation_samples, 0)}`],
         ["Brier", upDownNumber(training.brier ?? training.validation?.brier, 4)],
         ["訓練時間", upDownTime(training.trained_at ?? training.at)],
@@ -111,7 +144,7 @@ function upDownPageHTML(snapshot, historyPage, unavailable = false) {
   const history = Array.isArray(snapshot.history) ? snapshot.history : [];
   const pageCount = Math.max(1, Math.ceil(history.length / UP_DOWN_PAGE_SIZE));
   const page = Math.min(pageCount, historyPage);
-  const status = Object.hasOwn(UP_DOWN_STATES, snapshot.status) ? UP_DOWN_STATES[snapshot.status] : "待確認";
+  const status = upDownStatusLabel(snapshot.status);
   const periodName = (record) => UP_DOWN_PERIODS.get(record.period_minutes) || "—";
   return `<div class="up-down-page">
     <section class="card up-down-card" aria-labelledby="up-down-title" id="up-down-summary">

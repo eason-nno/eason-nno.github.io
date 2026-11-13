@@ -973,6 +973,37 @@ function teamReportDay(value) {
   return Number.isFinite(date.getTime()) ? teamDayFormat.format(date) : "";
 }
 
+function teamReportDuration(run) {
+  if (Number.isFinite(run?.duration_s) && run.duration_s >= 0) return `耗時 ${Math.round(run.duration_s)} 秒`;
+  if (Number.isFinite(run?.observed_duration_s) && run.observed_duration_s >= 0) {
+    return `至少 ${Math.floor(run.observed_duration_s)} 秒（僅有部分時間紀錄）`;
+  }
+  return "耗時未記錄";
+}
+function teamReportHref(run) {
+  return "#/team?" + new URLSearchParams({ symbol: run.symbol, report: run.id });
+}
+const teamIncomplete = (run) => run?.status === "failed" || run?.status === "stopped";
+function teamSelectableReports(rows) {
+  return rows.filter(run => run.status === "done" || teamIncomplete(run));
+}
+function teamHistoricalRoles(run) {
+  const findings = run.result?.findings || {}, models = run.models || {};
+  return Object.fromEntries(ROLES.map((role) => {
+    const saved = run.roles?.[role.key] || {};
+    const modelKeys = Object.keys(run.result?.slot_usage?.roles?.[role.key]?.models || {});
+    const modelNames = [...new Set(modelKeys.map(key => key.split(":").slice(1).join(":")).filter(Boolean))];
+    const hasReport = findings[role.key] || run.result?.reports?.[role.key];
+    return [role.key, {
+      status: saved.status || (run.status === "done" || hasReport ? "done" : "unknown"),
+      finding: saved.finding ?? findings[role.key],
+      model: saved.model || modelNames.join("、") || (run.status === "done" ? models[role.tier]?.used : ""),
+      score: saved.score ?? run.result?.scores?.[role.key],
+      elapsed_s: saved.elapsed_s ?? run.result?.timings?.[role.key],
+      observed_elapsed_s: saved.observed_elapsed_s,
+    }];
+  }));
+}
 function teamDayChoices(reports, day, selectedId) {
   const selected = reports.find(r => r.id === selectedId);
   const active = teamReportDay(selected?.created_at) || day;
@@ -982,7 +1013,7 @@ function teamDayChoices(reports, day, selectedId) {
 
 async function pageTeam(params) {
   const view = location.hash;
-  setTitle("AI 團隊研究室", "原版 12 位＋策略測試經理・獨立分工");
+  setTitle("AI 團隊研究室", "12 位研究角色・2 位策略經理");
   let [ov, lv, aset, newPaper] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/ai/live"), api("/api/crypto/ai/settings"), J("new-paper.json").catch(() => null)]);
   WATCH = ov.items.map((i) => i.symbol);
   let sym = coinKey(params.get("symbol") || (lv.busy ? lv.current.symbol : lastCoin));
@@ -999,7 +1030,7 @@ async function pageTeam(params) {
       api(`/api/crypto/ai/runs?symbol=${encodeURIComponent(sym)}&limit=300`),
     ]);
     if (!active()) return;
-    reportChoices = rs.filter(r => r.status === "done");
+    reportChoices = teamSelectableReports(rs);
     if (!selectedReport && (l.busy || ["paused","sync_stale"].includes(l.current?.status)) && sameCoin(l.current?.symbol, sym)) {
       isLive = !!l.busy; run = l.current; roles = run.roles || {}; msgs = run.messages || [];
       return;
@@ -1010,16 +1041,7 @@ async function pageTeam(params) {
       const detail = await api(`/api/crypto/ai/runs/${encodeURIComponent(entry.id)}`).catch(() => entry);
       if (!active()) return;
       run = detail;
-      const f = run.result?.findings || {}, mdl = run.models || {};
-      roles = Object.fromEntries(ROLES.map((r) => {
-        const modelKeys = Object.keys(run.result?.slot_usage?.roles?.[r.key]?.models || {});
-        const modelNames = new Set(modelKeys.map(key => key.split(":").slice(1).join(":")).filter(Boolean));
-        return [r.key, {
-          status: run.status === "done" || f[r.key] ? "done" : ["failed", "stopped"].includes(run.status) ? "failed" : "waiting",
-          finding: f[r.key], model: [...modelNames].join("、") || mdl[r.tier]?.used,
-          score: run.result?.scores?.[r.key], elapsed_s: run.result?.timings?.[r.key],
-        }];
-      }));
+      roles = teamHistoricalRoles(run);
       msgs = (run.events || []).filter((e) => e.kind === "message").map((e) => e.data);
     } else { run = null; roles = {}; msgs = []; }
   };
@@ -1033,7 +1055,7 @@ async function pageTeam(params) {
   const openRole = (k) => {
     const r = ROLE[k] || { name: k }, st = roles[k] || {};
     const turns = debateTurns().filter((t) => t.key === k);
-    const body = turns.length > 1 ? turns.map((t) => `<div class="turn"><div class="turn-h">第 ${t.round} 輪${t.ts ? `・${fmtTime(t.ts)}` : ""}</div><div class="md">${t.html}</div></div>`).join("") : `<div class="md">${fullHtml(k) || '<p class="muted">這個角色尚未產出內容。</p>'}</div>`;
+    const body = turns.length > 1 ? turns.map((t) => `<div class="turn"><div class="turn-h">第 ${t.round} 輪${t.ts ? `・${fmtTime(t.ts)}` : ""}</div><div class="md">${t.html}</div></div>`).join("") : `<div class="md">${fullHtml(k) || '<p class="muted">這個角色沒有可讀取的內容紀錄。</p>'}</div>`;
     showSheet(`${smallIc(r.icon || "chat", 16)} ${esc(r.name)}<span class="mchip">${esc(r.team || "")}</span>`, `${st.score != null ? `<div class="chip-muted" style="margin-bottom:8px">多空分數 ${st.score}</div>` : ""}${st.finding ? `<div class="callout" style="margin:0 0 12px"><b>重點</b><span>${esc(st.finding)}</span></div>` : ""}${body}
       <p class="note">${run ? `${esc(baseOf(run.symbol))}・${fmtTime(run.created_at)}（台北）・模型 ${esc(st.model || run?.models?.[r.tier]?.used || "")}` : ""}</p>`);
   };
@@ -1055,8 +1077,8 @@ async function pageTeam(params) {
   </div>
   <section class="card cons-bar"><div class="cons-h"><h2>${ICON.target}${selectedReport ? "報告共識" : "目前共識"}</h2><span id="cons-st"></span></div><div id="cons" class="cons-body"></div></section>
   <section class="card" style="margin-top:16px;padding:0"><div class="graph" id="graph"><svg class="links" id="links"></svg>
-    <div class="gcol">${col(0)}</div><div class="gcol">${col(1)}</div><div class="gcol">${col(2)}</div><div class="gcol">${col(3)}</div><div class="gcol">${col(4)}</div>${strategyBranchHTML(newPaper, strategyDetails())}</div></section>
-  <p class="note" style="margin:8px 2px 0">點任一角色卡可展開完整報告（Markdown 全文；辯論角色依輪次列出）。</p>
+    <div class="gcol">${col(0)}</div><div class="gcol">${col(1)}</div><div class="gcol">${col(2)}</div><div class="gcol">${col(3)}</div><div class="gcol">${col(4)}</div>${strategyBranchHTML(newPaper, strategyDetails())}${upDownBranchHTML()}</div></section>
+  <p class="note" style="margin:8px 2px 0">團隊共 14 位成員。每份研究由上方 12 位角色執行，兩位策略經理依各自排程評估。</p>
   <section class="card" style="margin-top:12px;padding:0"><div class="stepper" id="stepper"></div></section>
   <section class="card" style="margin-top:12px"><div class="prog">
     <svg class="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" stroke="#333b47" stroke-width="5"/><circle id="ring" cx="22" cy="22" r="18" stroke="#0ecb81" stroke-width="5" stroke-dasharray="0 113" transform="rotate(-90 22 22)"/></svg>
@@ -1097,7 +1119,7 @@ async function pageTeam(params) {
     }
     const placeholder = day.day ? "選擇當日報告" : "先選擇日期";
     const choices = `<option value="">${placeholder}</option>` + day.reports.map(r =>
-      `<option value="${esc(r.id)}">${esc(fmtTime(r.created_at))}（台北）・${esc(TRIG[r.trigger] || r.trigger)}</option>`
+      `<option value="${esc(r.id)}">${esc(fmtTime(r.created_at))}（台北）・${esc(TRIG[r.trigger] || r.trigger)}${teamIncomplete(r) ? (r.status === "failed" ? "・失敗" : "・已停止") : ""}</option>`
     ).join("");
     if (choices !== previousChoices) {
       reportSelect.innerHTML = choices;
@@ -1110,37 +1132,49 @@ async function pageTeam(params) {
       const st = roles[r.key] || { status: "waiting" }, el = $("#ag-" + r.key); if (!el) return;
       el.classList.toggle("running", st.status === "running"); el.classList.toggle("done", st.status === "done"); el.classList.toggle("failed", st.status === "failed");
       const p = $("[data-st]", el); p.className = "pill " + (st.status === "done" ? "done" : st.status === "running" ? "run" : st.status === "failed" ? "gray" : "gray");
-      p.textContent = st.status === "done" ? "已完成" : st.status === "running" ? "進行中" : st.status === "failed" ? "未完成" : "等待中";
+      p.textContent = { done: "已完成", running: "進行中", failed: "失敗", interrupted: "中斷",
+        unknown: "狀態未記錄", waiting: teamIncomplete(run) ? "未開始" : "等待中" }[st.status] || "狀態未記錄";
       const f = $("[data-f]", el); f.hidden = !st.finding; f.textContent = (st.score != null ? `【${st.score}】` : "") + (st.finding || "");
       const ft = plain(fullText(r.key)), pv = $("[data-p]", el), mb = $("[data-more]", el);
       pv.hidden = !ft; pv.textContent = (st.score != null ? `【${st.score}】` : "") + ft; mb.hidden = !ft; if (ft) f.hidden = true;
       const model = $("[data-m]", el);
-      model.textContent = st.model || run?.models?.[r.tier]?.used || run?.models?.[r.tier]?.model || "";
-      if (st.status === "done" && Number.isFinite(st.elapsed_s)) model.textContent += `（${Math.round(st.elapsed_s)} 秒）`;
+      const modelName = st.model || (teamIncomplete(run) ? "" : run?.models?.[r.tier]?.used || run?.models?.[r.tier]?.model || "");
+      const elapsed = Number.isFinite(st.elapsed_s) && st.elapsed_s >= 0 ? `${new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 }).format(st.elapsed_s)} 秒`
+        : Number.isFinite(st.observed_elapsed_s) && st.observed_elapsed_s >= 0 ? `至少 ${Math.floor(st.observed_elapsed_s)} 秒` : "";
+      model.textContent = [modelName, elapsed ? (modelName ? `（${elapsed}）` : elapsed) :
+        (teamIncomplete(run) && st.status !== "waiting" ? "耗時未記錄" : "")].filter(Boolean).join("");
       model.hidden = !model.textContent;
     });
     $("#stepper").innerHTML = steps.map(([nm, ks], i) => { const all = ks.every((k) => roles[k]?.status === "done"), any = ks.some((k) => roles[k]?.status === "running");
       return `${i ? `<div class="step-line ${all ? "done" : ""}"></div>` : ""}<div class="step ${all ? "done" : any ? "active" : ""}"><div class="c">${all ? "✓" : i + 1}</div><span>${nm}</span></div>`; }).join("") + `<div class="step-count"><b>${done}</b> / ${ROLES.length} 已完成</div>`;
     const pct = Math.round((done / ROLES.length) * 100);
     const lv = isLive ? run : null, rnm = lv?.running_role ? (ROLE_NAME[lv.running_role] || lv.running_role) : "";
-    $("#pg-t").innerHTML = `${done} / ${ROLES.length} 已完成${run ? "・" + (isLive ? `執行中${rnm ? "・" + esc(rnm) : ""}・已執行 <span class="num" data-elapsed="${esc(run.started_at || run.created_at)}">${fmtDur(Date.now() - new Date(run.started_at || run.created_at))}</span>${lv?.last_issue ? `・<span class="tc-issue">${esc(lv.last_issue.text)}</span>` : ""}` : run.status === "done" ? `完成於 ${fmtTime(run.finished_at)}・耗時 ${Math.round(run.duration_s)} 秒${run.resumed ? `・補完成於 ${fmtTime(run.resumed.at)}` : ""}` : run.status === "failed" ? "失敗：" + esc(friendlyErr(run.error)) : run.status === "paused" ? "研究已暫停，進度已保存" : run.status === "sync_stale" ? "超過10分鐘未同步，研究狀態待確認" : "") : ""}`;
+    const terminal = teamIncomplete(run) ? `${run.status === "failed" ? "失敗" : "已停止"}・${teamReportDuration(run)}` : "";
+    $("#pg-t").innerHTML = `${done} / ${ROLES.length} 已完成${run ? "・" + (isLive ? `執行中${rnm ? "・" + esc(rnm) : ""}・已執行 <span class="num" data-elapsed="${esc(run.started_at || run.created_at)}">${fmtDur(Date.now() - new Date(run.started_at || run.created_at))}</span>${lv?.last_issue ? `・<span class="tc-issue">${esc(lv.last_issue.text)}</span>` : ""}` : run.status === "done" ? `完成於 ${fmtTime(run.finished_at)}・${teamReportDuration(run)}${run.resumed ? `・補完成於 ${fmtTime(run.resumed.at)}` : ""}` : terminal ? esc(terminal) : run.status === "paused" ? "研究已暫停，進度已保存" : run.status === "sync_stale" ? "超過10分鐘未同步，研究狀態待確認" : "") : ""}`;
     $("#pg-bar").style.width = pct + "%"; $("#pg-pct").textContent = pct + "%"; $("#ring").setAttribute("stroke-dasharray", `${(pct / 100) * 113} 113`);
     const c = run?.calls; $("#pg-calls").textContent = c ? "呼叫次數 " + fmtCalls(c) + (c.reconstructed ? "＊" : "") : ""; $("#pg-calls").title = callsTitle(c);
-    const m = run?.models; $("#team-models").textContent = m?.quick && m?.deep ? `快速 ${m.quick.used || m.quick.model}・深度 ${m.deep.used || m.deep.model}` : `快速 ${A.quick.model}・深度 ${A.deep.model}`; $("#team-models").title = m?.quick && m?.deep ? `快速：${m.quick.key}；深度：${m.deep.key}` : "";
-    const dec = run?.result?.decision;
+    const m = run?.models; $("#team-models").textContent = m?.quick && m?.deep ? `快速 ${m.quick.used || m.quick.model}・深度 ${m.deep.used || m.deep.model}` : teamIncomplete(run) ? "依角色紀錄" : `快速 ${A.quick.model}・深度 ${A.deep.model}`; $("#team-models").title = m?.quick && m?.deep ? `快速：${m.quick.key}；深度：${m.deep.key}` : "";
+    const dec = teamIncomplete(run) ? null : run?.result?.decision;
     if (dec) { const d = DIRS[dec.decision];
       $("#cons-st").innerHTML = `<span class="pill ${d.pill}">${d.t}</span>`;
       $("#cons").innerHTML = `<div class="cons-dir"><b class="${d.c}" style="font-size:24px">${d.t}</b><span class="muted">信心 ${dec.confidence}/100・風險 ${esc(dec.risk_level)}</span></div>
         <div class="lv cons-lv"><div><small>進場</small><b class="num">${fmtLv(dec.entry_price)}</b></div><div><small>停損</small><b class="num down">${fmtLv(dec.stop_loss)}</b></div><div><small>停利</small><b class="num up">${fmtLv(dec.take_profit)}</b></div><div><small>部位</small><b class="num">${dec.position_size_pct ?? "—"}%</b></div></div>
         <p class="ai-sum cons-sum">${esc(dec.executive_summary)}</p><a class="btn ghost-mint cons-link" href="#/report/${encodeURIComponent(run.id)}">完整報告 ›</a>`;
     } else {
-      $("#cons-st").innerHTML = `<span class="pill mid">${isLive ? "分析中" : run?.status === "stopped" ? "已停止" : "等待分析"}</span>`;
+      $("#cons-st").innerHTML = run?.status === "failed" ? '<span class="pill gray">失敗</span>' : `<span class="pill mid">${isLive ? "分析中" : run?.status === "stopped" ? "已停止" : "等待分析"}</span>`;
       $("#cons").innerHTML = `<p class="muted" style="margin:0;font-size:13px">${isLive ? "投資組合經理完成最終決策後，會在這裡顯示做多 / 做空 / 觀望、進場、停損與停利。" : selectedReport && !run ? "這份報告已不在清單中，請選擇其他報告。" : run?.status === "failed" ? "上次分析失敗：" + esc(friendlyErr(run.error)) : "尚無共識。"}</p>`;
     }
     requestAnimationFrame(draw);
   };
-  $("#graph").addEventListener("click", (e) => { const a = e.target.closest(".agent"); if (a && a.id !== "ag-new-strategy") openRole(a.id.replace("ag-", "")); });
-  $("#graph").addEventListener("keydown", (e) => { const a = e.target.closest(".agent"); if (a && a.id !== "ag-new-strategy" && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openRole(a.id.replace("ag-", "")); } });
+  $("#graph").addEventListener("click", (e) => { const a = e.target.closest(".gcol .agent"); if (a) openRole(a.id.slice(3)); });
+  $("#graph").addEventListener("keydown", (e) => { const a = e.target.closest(".gcol .agent"); if (a && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openRole(a.id.slice(3)); } });
+  const upDownStatus = $("#up-down-team-status");
+  const refreshUpDown = async () => {
+    const snapshot = await J(UP_DOWN_FILE).catch(() => null);
+    if (snapshot && upDownStatus.isConnected) patchHTML(upDownStatus, upDownManagerHTML(snapshot));
+  };
+  onData([UP_DOWN_FILE], refreshUpDown);
+  void refreshUpDown();
   onData(["status.json", "runs.json", "settings.json", "new-paper.json"], async (active) => {
     const [settings, latestPaper] = await Promise.all([
       api("/api/crypto/ai/settings"), J("new-paper.json").catch(() => newPaper),
@@ -1381,8 +1415,8 @@ async function pageReports(params) {
         <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "stopped" ? `<span class="pill gray">已停止</span>` : r.status === "sync_stale" ? `<span class="pill gray">同步中斷</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
         <td class="num">${r.status === "done" ? `${fmtLv(r.entry)} / <span class="down">${fmtLv(r.stop)}</span> / <span class="up">${fmtLv(r.take_profit)}</span>` : "—"}</td>
         <td class="muted num" style="font-size:12px">${m.quick ? `${esc(m.quick.used)}（槽位 ${m.quick.key_slot ?? "—"}）<br>${esc(m.deep.used)}（槽位 ${m.deep.key_slot ?? "—"}）${m.quick.fallback_reason ? '<br><span class="warn">快速已切換備援</span>' : ""}${m.deep.fallback_reason ? '<br><span class="warn">深度已切換備援</span>' : ""}` : "—"}</td>
-        <td class="num" style="white-space:nowrap" title="${esc(callsTitle(r.calls))}">${fmtCalls(r.calls)}${r.calls?.reconstructed ? '<span class="warn" title="原始執行的呼叫次數由紀錄還原">＊</span>' : ""}</td><td class="num">${r.duration_s ? Math.round(r.duration_s) + " 秒" : "—"}</td>
-        <td class="c">${r.status === "done" ? `<a class="ok" href="#/report/${encodeURIComponent(r.id)}">查看</a>` : ""}</td></tr>`; }).join("")}
+        <td class="num" style="white-space:nowrap" title="${esc(callsTitle(r.calls))}">${fmtCalls(r.calls)}${r.calls?.reconstructed ? '<span class="warn" title="原始執行的呼叫次數由紀錄還原">＊</span>' : ""}</td><td class="num">${teamIncomplete(r) ? esc(teamReportDuration(r)) : r.duration_s ? Math.round(r.duration_s) + " 秒" : "—"}</td>
+        <td class="c">${r.status === "done" ? `<a class="ok" href="#/report/${encodeURIComponent(r.id)}">查看</a>` : teamIncomplete(r) ? `<a class="ok" href="${esc(teamReportHref(r))}">查看流程</a>` : ""}</td></tr>`; }).join("")}
     </tbody></table>` : `<div class="empty-state" style="height:180px">${ICON.report}<b>尚未執行 AI 分析</b><small>AI 團隊的繁體中文研究報告會列在這裡。</small></div>`}${pager}</section>`;
   };
   const view = location.hash, data = await load();
@@ -1640,6 +1674,7 @@ async function pageReport(id) {
   const view = location.hash;
   const r = await api(`/api/crypto/ai/runs/${encodeURIComponent(id)}`);
   if (view !== location.hash) return;
+  if (teamIncomplete(r)) { location.replace(teamReportHref(r)); return; }
   const res = r.result || {}, dec = res.decision || {}, m = r.models || {}, c = r.calls || {};
   setTitle(`${baseOf(r.symbol)} 研究報告`, fmtTime(r.created_at) + "（台北）");
   const srcs = Object.entries(r.sources || {});
@@ -1671,7 +1706,6 @@ async function pageReport(id) {
   const show = (k) => { $("#rep-body").innerHTML = `<h2 style="margin-top:0">${esc(REPORT_ORDER.find((x) => x[0] === k)[1])}</h2>` + (r.reports_html[k] || ""); $$("#rep-nav .tab").forEach((b) => b.classList.toggle("active", b.dataset.k === k)); };
   $$("#rep-nav .tab").forEach((b) => b.onclick = () => show(b.dataset.k));
   const first = REPORT_ORDER.find(([k]) => r.reports_html?.[k]); if (first) show(first[0]);
-  if (r.status === "failed") $("#rep-body").innerHTML = `<div class="callout"><b>這次分析失敗</b><span>${esc(r.error || "")}</span></div>`;
 }
 
 /* 設定（公開版：唯讀） */
