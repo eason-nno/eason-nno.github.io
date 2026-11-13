@@ -1210,7 +1210,7 @@ async function pagePaper() {
   const runLink = (o) => {const id=o.position_review_id?o.report_id:o.run_id;return id?`<a class="ok" href="#/report/${encodeURIComponent(id)}">${o.position_review_id?"參考研究":"AI 報告"}</a>`:"";};
   const markOf = (o) => { const k = coinKey(o.symbol), m = MK.marks[k]; if (m) return m.px; const t = live.tickers[k] || MK.tickers[k]; return t ? t.last : o.mark_price; };
   const margin = (o) => o.margin || (o.notional ? o.notional / LEV : null);
-  const unreal = (o) => { const mk = markOf(o); if (mk == null) return null; return (mk - o.fill_price) * o.qty * (o.side === "LONG" ? 1 : -1) + (o.funding_total || 0); };
+  const unreal = (o) => { const mk = markOf(o); if (mk == null) return null; return (mk - o.fill_price) * o.qty * (o.side === "LONG" ? 1 : -1) + (o.funding_total || 0) - (o.entry_fee || 0) - tradeEstimatedCloseFee(P, mk, o.qty); };
   let hist = P.orders.filter((o) => o.status === "closed").sort((a, b) => b.close_ms - a.close_ms);
   let tab = pagePaper.tab || "pos", range = pagePaper.range || "3m";
   const pages = pagePaper.pages ||= {};
@@ -1221,9 +1221,9 @@ async function pagePaper() {
   ${P.engine && P.engine.last_error && /Binance/.test(P.engine.last_error) ? `<div class="callout" style="margin-bottom:12px"><b>注意</b><span>後台暫時連不上 Binance：${esc(P.engine.last_error)}（不會改用其他交易所，恢復後自動補算）</span></div>` : ""}
   <div class="grid-4">
     <div class="card kcard"><small>目前權益（含未實現）</small><div class="row"><span class="big num" id="pp-eq">—</span></div><small class="num" id="pp-eq2"></small></div>
-    <div class="card kcard"><small>已實現損益（含資金費）</small><div class="row"><span class="big num ${signCls(P.realized_pnl)}">${usd(P.realized_pnl)}</span></div><small class="num">價差 ${usd(P.price_pnl)}・資金費 ${usd(P.funding_net, 4)}</small></div>
+    <div class="card kcard"><small>已入帳淨損益</small><div class="row"><span class="big num ${signCls(P.realized_pnl)}">${usd(P.realized_pnl)}</span></div><small class="num">價差 ${usd(P.price_pnl)}・資金費 ${usd(P.funding_net, 4)}・手續費 ${tradeFeeLabel(P.fees_paid)}</small></div>
     <div class="card kcard"><small>勝率</small><div class="row"><span class="big num">${P.win_rate == null ? "—" : P.win_rate + "%"}</span></div><small class="num">${P.wins} 勝 / ${P.trades} 筆已平倉</small></div>
-    <div class="card kcard"><small>最大回撤（已實現權益）</small><div class="row"><span class="big num ${P.max_drawdown_pct > 0 ? "down" : ""}">${P.max_drawdown_pct.toFixed(2)}%</span></div><small class="num">依已實現權益（平倉 + 資金費）計算</small></div>
+    <div class="card kcard"><small>最大回撤（已實現權益）</small><div class="row"><span class="big num ${P.max_drawdown_pct > 0 ? "down" : ""}">${P.max_drawdown_pct.toFixed(2)}%</span></div><small class="num">含成交手續費與資金費</small></div>
   </div>
   ${tradePanelHTML(P.open.length, P.pending.length)}
   <section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.trendUp}權益曲線</h2><div class="right"><span class="chip-muted">已實現（平倉 + 資金費）＋ 目前含未實現</span></div></div>
@@ -1269,9 +1269,9 @@ async function pagePaper() {
     ${rows.length ? `<div class="hist-rows">${rows.map((o) => `<article class="hist-row">
       <div class="hist-head"><div class="hist-contract">${coinIcon(baseOf(o.symbol), 22)}${contract(o)}<span class="tag">${esc(o.margin_mode || "逐倉")}</span><span class="tag ${o.side === "LONG" ? "t-up" : "t-down"}">${SIDE[o.side][0]}</span><span class="hist-state">完全平倉</span></div>
         <div class="hist-times"><span>開倉時間 <time class="num">${fmtTime(o.fill_at)}</time></span><span>最後平倉時間 <time class="num">${fmtTime(o.close_at)}</time></span><span>持續 ${dur(o.duration_ms ?? (o.close_ms - o.fill_ms))}</span></div></div>
-      <dl class="hist-metrics"><div><dt>已實現盈虧（含資金費）</dt><dd class="num ${signCls(o.pnl_net)}">${usd(o.pnl_net)} ${unitOf(o.symbol)}</dd></div><div><dt>收益率</dt><dd class="num ${signCls(o.roi_pct)}">${o.roi_pct == null ? "—" : fmtPct(o.roi_pct)}</dd></div>
+      <dl class="hist-metrics"><div><dt>已實現淨盈虧</dt><dd class="num ${signCls(o.pnl_net)}">${usd(o.pnl_net)} ${unitOf(o.symbol)}</dd></div><div><dt>收益率</dt><dd class="num ${signCls(o.roi_pct)}">${o.roi_pct == null ? "—" : fmtPct(o.roi_pct)}</dd></div>
         <div><dt>已平倉量</dt><dd class="num">${qtyTxt({ ...o, qty: o.closed_qty || o.qty })}</dd></div><div><dt>開倉價格</dt><dd class="num">${fmtPrice(o.fill_price)}</dd></div><div><dt>平倉均價</dt><dd class="num">${fmtPrice(o.close_price)}</dd></div><div><dt>最大未平倉量</dt><dd class="num">${qtyTxt({ ...o, qty: o.max_qty || o.qty })}</dd></div></dl>
-      <div class="hist-foot"><span>出場原因 <b class="${REASON(o.close_reason) === "停利" ? "up" : REASON(o.close_reason) === "停損" ? "down" : ""}">${esc(REASON(o.close_reason))}</b></span><span>價差 ${usd(o.pnl_price)}・資金費 ${usd(o.funding_total, 4)}</span>${runLink(o)}</div></article>`).join("")}</div>`
+      <div class="hist-foot"><span>出場原因 <b class="${REASON(o.close_reason) === "停利" ? "up" : REASON(o.close_reason) === "停損" ? "down" : ""}">${esc(REASON(o.close_reason))}</b></span><span>價差 ${usd(o.pnl_price)}・資金費 ${usd(o.funding_total, 4)}・手續費 ${tradeFeeLabel(o.fee_total, null, unitOf(o.symbol))}</span>${runLink(o)}</div></article>`).join("")}</div>`
       : `<div class="empty-state" style="height:110px">${ICON.paper}<b>${RANGES.find((r) => r[0] === range)[1]}內沒有已平倉的倉位</b></div>`}${footer}`;
   };
   const renderTab = (next = tab) => {
@@ -1295,7 +1295,7 @@ async function pagePaper() {
   area.createPriceLine({ price: P.initial, color: "rgba(129,147,173,.5)", lineStyle: 2, lineWidth: 1, axisLabelVisible: false, title: "起始" });
   const setTxt = (sel, html, cls) => $$(sel).forEach((e) => { e.innerHTML = html; if (cls != null) e.className = "num " + cls; });
   function upd() {
-    let u = 0;
+    let u = 0, equityDelta = 0, complete = true;
     P.open.forEach((o) => {
       const mk = markOf(o), v = unreal(o), m = margin(o), roi = v != null && m ? (v / m) * 100 : null;
       setTxt(`[data-pp-mk="${o.id}"],[data-pp-mk2="${o.id}"]`, mk == null ? "—" : fmtPrice(mk));
@@ -1303,12 +1303,14 @@ async function pagePaper() {
         setTxt(`[data-pp-u="${o.id}"]`, `<b>${usd(v)} ${unitOf(o.symbol)}</b><br><span>${roi == null ? "" : fmtPct(roi)}</span>`, signCls(v));
         setTxt(`[data-pp-u2="${o.id}"]`, usd(v), signCls(v)); setTxt(`[data-pp-r2="${o.id}"]`, roi == null ? "—" : fmtPct(roi), signCls(v));
         u += v;
-      }
+        equityDelta += v + (o.entry_fee || 0) - (o.funding_total || 0);
+      } else complete = false;
     });
     P.pending.forEach((o) => { const t = live.tickers[coinKey(o.symbol)] || MK.tickers[coinKey(o.symbol)]; if (t) setTxt(`[data-pp-px="${o.symbol}"],[data-pp-px2="${o.symbol}"]`, fmtPrice(t.last)); });
-    const eq = P.realized_equity + u;
-    $("#pp-eq").textContent = money(eq); $("#pp-eq").className = "big num " + signCls(eq - P.initial);
-    $("#pp-eq2").textContent = `${usd(eq - P.initial)} USDC（${fmtPct(((eq - P.initial) / P.initial) * 100)}）・未實現 ${P.open.length ? usd(u) : "—"}`;
+    const eq = P.realized_equity + equityDelta;
+    $("#pp-eq").textContent = complete ? money(eq) : "—";
+    $("#pp-eq").className = "big num " + (complete ? signCls(eq - P.initial) : "");
+    $("#pp-eq2").textContent = complete ? `${usd(eq - P.initial)} USDC（${fmtPct(((eq - P.initial) / P.initial) * 100)}）・倉位淨盈虧 ${P.open.length ? usd(u) : "—"}` : "等待標記價格";
     const now = Math.floor(Date.now() / 1000) + TZ_SHIFT;
     const pts = base.slice(); if (!pts.length || pts[pts.length - 1].time < now) pts.push({ time: now, value: eq });
     area.setData(pts);
@@ -1534,6 +1536,61 @@ function trainingHistoryHTML(history, selected) {
     ${rows ? `<ul class="training-history">${rows}</ul>` : '<p class="training-meta">尚無已保存的訓練紀錄。</p>'}${reportPager(history, "#/training", "訓練紀錄分頁")}</section>`;
 }
 
+function researchMemoryHTML(memory) {
+  if (!memory) return "";
+  const stateText = {waiting:"等待首次整理", backfilling:"正在補齊幣安歷史", ready:"持續學習中", retrying:"行情暫時不完整，將重試"};
+  const regimes = {rising:"上行", falling:"下行", range:"盤整"};
+  const directions = {LONG:"做多", SHORT:"做空", WAIT:"觀望"};
+  const weight = {collecting:"繼續累積", supported:"可參考", caution:"降權，先檢查反證", mixed:"維持中立"};
+  const outcome = {support:"支持原方向", counter:"方向遇到反例", flat:"收盤持平", observed:"觀望後的行情"};
+  const execution = {pending:"委託等待成交", cancelled:"未成交取消", filled:"已成交，待平倉", closed:"已平倉", rejected:"執行條件未通過", error:"模擬執行失敗"};
+  const reportLink = (id, label) => id ? `<a class="ok" href="#/report/${encodeURIComponent(id)}">${label}</a>` : "";
+  const signed = value => Number.isFinite(value) ? (value > 0 ? "+" : "") + trainingPct(value) : "—";
+  const candle = memory.coverage || {};
+  const latest = memory.last_research;
+  const learned = (memory.lessons || []).map(item => `<li>
+    <strong>${esc(regimes[item.regime])}・${esc(directions[item.side])}・${item.hours} 小時</strong>
+    <p>${esc(weight[item.state])}。支持 ${item.support} 筆、反例 ${item.counter} 筆。</p>
+    <div class="memory-links">${reportLink(item.support_id, "支持案例")}${reportLink(item.counter_id, "反例")}</div>
+  </li>`).join("");
+  const rows = (memory.changes || []).map(change => {
+    const lesson = change.lesson;
+    const move = change.facts;
+    const revision = change.revision;
+    const topic = change.kind === "market"
+      ? `${change.hours} 小時・${directions[change.side] || ""}・${outcome[change.result] || ""}`
+      : "模擬成交回饋";
+    const evidence = change.kind === "market"
+      ? `收盤 ${signed(move?.return)}，期間低／高 ${signed(move?.low)}／${signed(move?.high)}。${move?.risk_exceeded ? " 逆向波動超過報告的建議風險距離。" : ""}`
+      : (change.orders || []).map(order => {
+        const action = order.source === "exit" ? "既有委託／倉位" : "本輪委託";
+        const pnl = Number.isFinite(order.net) ? `，淨損益 ${order.net.toFixed(2)} USDC，資金費 ${order.funding.toFixed(2)} USDC` : "";
+        const fee = Number.isFinite(order.fee) ? `，已付手續費 ${order.fee.toFixed(4)} USDC` : "";
+        return `${action}：${execution[order.state] || "狀態待確認"}${pnl}${fee}。`;
+      }).join(" ") || (execution[change.execution] || "已更新帳本狀態。");
+    const lessonText = lesson ? `${regimes[lesson.regime]}市況的同類觀點，支持 ${lesson.support} 筆、反例 ${lesson.counter} 筆。記憶權重：${weight[lesson.state]}。` : "";
+    return `<li class="memory-event">
+      <div><strong>${esc(topic)}</strong> <span class="training-meta">${esc(trainingDate(change.at_ms))}（台北）</span>
+        ${revision ? `<span class="memory-revision">${esc(weight[revision.before])} → ${esc(weight[revision.after])}</span>` : ""}</div>
+      <p>${esc(evidence)} ${esc(lessonText)}</p>
+      <div class="memory-links">${reportLink(change.report_id, "原研究")}${reportLink(lesson?.support_id, "支持案例")}${reportLink(lesson?.counter_id, "反例")}</div>
+    </li>`;
+  }).join("");
+  return `<section class="card training-section research-memory" id="research-memory">
+    <div class="card-h"><h2>AI 團隊學習紀錄</h2><span class="chip-muted">BTCUSDC・${esc(stateText[memory.state] || stateText.waiting)}</span></div>
+    <dl class="memory-metrics">
+      <div><dt>幣安歷史行情</dt><dd>${candle.candles ? `${trainingCount(candle.candles)} 根小時 K 線` : "等待資料"}</dd>
+        ${candle.first_ms ? `<small>${esc(trainingDate(candle.first_ms))} 至 ${esc(trainingDate(candle.through_ms))}（台北）</small>` : ""}</div>
+      <div><dt>已登記的研究</dt><dd>${trainingCount(memory.reports)} 份</dd></div>
+      <div><dt>1／4／24 小時已核對</dt><dd>${TRAINING_HOURS.map(h => trainingCount(memory.counts?.[h] ?? 0)).join("／")} 筆</dd></div>
+    </dl>
+    ${latest ? `<p class="memory-latest">最新研究${latest.regime ? `（${esc(regimes[latest.regime] || "")}）` : ""}提供 ${trainingCount(latest.entries)} 條經驗${latest.market_cases ? `，涵蓋 ${trainingCount(latest.market_cases)} 段相似行情` : ""}。 ${reportLink(latest.report_id, "查看原研究")}</p>` : ""}
+    ${learned ? `<h3 class="memory-heading">目前學到的經驗</h3><ul class="memory-lessons">${learned}</ul>` : ""}
+    <h3 class="memory-heading">最近核對與修正</h3>
+    ${rows ? `<ol class="memory-events">${rows}</ol>` : '<p class="note">等報告出爐且後續行情收線，這裡會顯示學到與修正的內容。</p>'}
+  </section>`;
+}
+
 async function pageTraining(params) {
   setTitle("訓練結果");
   let active = true;
@@ -1550,7 +1607,7 @@ async function pageTraining(params) {
     if (file) DATA.revisions[file] = row?.detail_rev;
     const report = file ? await J(file).catch(() => null) : null;
     if (active) patchHTML($("#app"), trainingMetricsHTML(status.market_training) +
-      trainingRunHTML(report, selected, history.page) + trainingHistoryHTML(history, selected));
+      researchMemoryHTML(status.research_memory) + trainingRunHTML(report, selected, history.page) + trainingHistoryHTML(history, selected));
   };
   await render();
   if (!active) return;

@@ -12,7 +12,19 @@ function tradeAccountBanner(name, account, now = Date.now()) {
   }
   const date = Number.isFinite(first) ? tpeDate(first) : null;
   const days = date ? (Date.parse(tpeDate(now)) - Date.parse(date)) / 86400000 + 1 : null;
-  return `<div class="ro-banner">${esc(name)}・起始日 ${date || "—"}・累計 ${days == null ? "—" : days + " 天"}</div>`;
+  const rates = account.fee_policy;
+  const rateText = rates ? `・一般會員費率：掛單 ${(rates.maker_rate * 100).toFixed(4)}%／吃單 ${(rates.taker_rate * 100).toFixed(4)}%` : "";
+  return `<div class="ro-banner">${esc(name)}・起始日 ${date || "—"}・累計 ${days == null ? "—" : days + " 天"}${rateText}</div>`;
+}
+
+function tradeFeeLabel(value, liquidity, unit = "USDC") {
+  if (!Number.isFinite(value)) return "—";
+  const label = {maker:"掛單", taker:"吃單"}[liquidity];
+  return `${fmtPrice(value, 4)} ${esc(unit)}${label ? `（${label}）` : ""}`;
+}
+
+function tradeEstimatedCloseFee(account, price, qty) {
+  return price * qty * (account.fee_policy?.taker_rate || 0);
 }
 
 function formatLeverage(value) {
@@ -71,17 +83,17 @@ function tradeFills(P, strategy) {
   const out = [];
   if (strategy === "original") {
     for(const o of P.orders || []) {
-      if (["open", "closed"].includes(o.status) && o.fill_ms && o.fill_price > 0 && o.qty > 0) out.push({id:`${o.id}-open`,symbol:o.symbol,side:o.side,action:"開倉",ts:o.fill_ms,price:o.fill_price,qty:o.qty,report_id:tradeReportId(o)});
-      if(o.status === "closed" && o.close_ms && o.close_price > 0 && o.qty > 0) out.push({id:`${o.id}-close`,symbol:o.symbol,side:o.side,action:"平倉",ts:o.close_ms,price:o.close_price,qty:o.closed_qty || o.qty,report_id:tradeReportId(o)});
+      if (["open", "closed"].includes(o.status) && o.fill_ms && o.fill_price > 0 && o.qty > 0) out.push({id:`${o.id}-open`,symbol:o.symbol,side:o.side,action:"開倉",ts:o.fill_ms,price:o.fill_price,qty:o.qty,fee:o.entry_fee,liquidity:o.entry_liquidity,report_id:tradeReportId(o)});
+      if(o.status === "closed" && o.close_ms && o.close_price > 0 && o.qty > 0) out.push({id:`${o.id}-close`,symbol:o.symbol,side:o.side,action:"平倉",ts:o.close_ms,price:o.close_price,qty:o.closed_qty || o.qty,fee:o.exit_fee,liquidity:o.exit_liquidity,pnl_net:o.pnl_net,report_id:tradeReportId(o)});
     }
   } else {
     for(const c of P.cycles || []) {
       for(const l of c.legs || []) if(l.ts && l.price > 0 && l.qty > 0) {
         const order=(P.orders || []).find(o=>o.id===l.order_id);
-        out.push({id:l.order_id,symbol:c.symbol,side:c.side,action:l.seq ? `第 ${l.seq} 次加倉` : "開倉",ts:l.ts,price:l.price,qty:l.qty,report_id:order?.report_id || c.report_id});
+        out.push({id:l.order_id,symbol:c.symbol,side:c.side,action:l.seq ? `第 ${l.seq} 次加倉` : "開倉",ts:l.ts,price:l.price,qty:l.qty,fee:l.fee,liquidity:l.liquidity,report_id:order?.report_id || c.report_id});
       }
-      if(["test2", "test3"].includes(strategy)) for(const e of c.exits || [])out.push({id:e.id,symbol:c.symbol,side:c.side,action:e.forced?"強平（模擬）":"部分／全部平倉",ts:e.ts,price:e.price,qty:e.qty,pnl_net:e.pnl_net,report_id:e.report_id});
-      if(!["test2", "test3"].includes(strategy) && c.status === "closed" && c.close_ms && c.close_price > 0 && c.qty > 0) out.push({id:`${c.id}-close`,symbol:c.symbol,side:c.side,action:"平倉",ts:c.close_ms,price:c.close_price,qty:c.qty,report_id:c.report_id});
+      if(["test2", "test3"].includes(strategy)) for(const e of c.exits || [])out.push({id:e.id,symbol:c.symbol,side:c.side,action:e.forced?"強平（模擬）":"部分／全部平倉",ts:e.ts,price:e.price,qty:e.qty,fee:e.fee,liquidity:e.liquidity,pnl_net:e.pnl_net,report_id:e.report_id});
+      if(!["test2", "test3"].includes(strategy) && c.status === "closed" && c.close_ms && c.close_price > 0 && c.qty > 0) out.push({id:`${c.id}-close`,symbol:c.symbol,side:c.side,action:"平倉",ts:c.close_ms,price:c.close_price,qty:c.qty,fee:c.exit_fee,liquidity:c.exit_liquidity,pnl_net:c.pnl_net,report_id:c.report_id});
     }
   }
   return out.sort((a,b)=>b.ts-a.ts);
@@ -93,5 +105,5 @@ function tradeOrdersHTML(orders, strategy) {
 }
 function tradeFillsHTML(fills) {
   if(!fills.length)return '<div class="empty-state"><b>尚無已成交紀錄</b><small>未成交、取消與拒單不列入。</small></div>';
-  return `<div class="table-scroll"><table class="tbl trade-record-table"><thead><tr><th>成交時間（台北）</th><th>合約</th><th>持倉方向</th><th>成交動作</th><th>成交價</th><th>成交量</th><th>名目金額</th><th>已實現損益</th><th></th></tr></thead><tbody>${fills.map(f=>`<tr><td class="num">${fmtTime(f.ts)}</td><td><b>${esc(f.symbol)}</b></td><td class="${f.side === "LONG" ? "up" : "down"}">${f.side === "LONG" ? "做多" : "做空"}</td><td>${esc(f.action)}</td><td class="num">${fmtPrice(f.price)}</td><td class="num">${fmtPrice(f.qty,6)} ${esc(baseOf(f.symbol))}</td><td class="num">${fmtPrice(f.qty*f.price)} ${esc(unitOf(f.symbol))}</td><td class="${f.pnl_net == null ? "muted" : f.pnl_net>=0 ? "up" : "down"}">${f.pnl_net == null ? "—" : fmtPrice(f.pnl_net)+" USDC"}</td><td>${f.report_id ? `<a class="ok" href="#/report/${encodeURIComponent(f.report_id)}">研究報告</a>` : ""}</td></tr>`).join("")}</tbody></table></div><p class="note">依已保存的開倉、加倉、平倉資料呈現模擬成交；不補造歷史逐筆成交。</p>`;
+  return `<div class="table-scroll"><table class="tbl trade-record-table"><thead><tr><th>成交時間（台北）</th><th>合約</th><th>持倉方向</th><th>成交動作</th><th>成交價</th><th>成交量</th><th>名目金額</th><th>成交手續費</th><th>已實現淨損益</th><th></th></tr></thead><tbody>${fills.map(f=>`<tr><td class="num">${fmtTime(f.ts)}</td><td><b>${esc(f.symbol)}</b></td><td class="${f.side === "LONG" ? "up" : "down"}">${f.side === "LONG" ? "做多" : "做空"}</td><td>${esc(f.action)}</td><td class="num">${fmtPrice(f.price)}</td><td class="num">${fmtPrice(f.qty,6)} ${esc(baseOf(f.symbol))}</td><td class="num">${fmtPrice(f.qty*f.price)} ${esc(unitOf(f.symbol))}</td><td class="num">${tradeFeeLabel(f.fee, f.liquidity, unitOf(f.symbol))}</td><td class="${f.pnl_net == null ? "muted" : f.pnl_net>=0 ? "up" : "down"}">${f.pnl_net == null ? "—" : fmtPrice(f.pnl_net)+" USDC"}</td><td>${f.report_id ? `<a class="ok" href="#/report/${encodeURIComponent(f.report_id)}">研究報告</a>` : ""}</td></tr>`).join("")}</tbody></table></div><p class="note">依已保存的開倉、加倉、平倉資料呈現模擬成交；不補造歷史逐筆成交。</p>`;
 }
