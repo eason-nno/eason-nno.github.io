@@ -1217,7 +1217,7 @@ async function pagePaper() {
   const RANGES = [["1d", "一天", 1], ["1w", "一週", 7], ["1m", "一個月", 30], ["3m", "三個月", 90]];
   const layout = () => `
 
-  <div class="ro-banner bot-note">${smallIc("info", 15)}<span>AI 團隊策略・虛擬 ${money(P.initial)} USDC・只做模擬</span></div>
+  ${tradeAccountBanner("AI 團隊策略", P)}
   ${P.engine && P.engine.last_error && /Binance/.test(P.engine.last_error) ? `<div class="callout" style="margin-bottom:12px"><b>注意</b><span>後台暫時連不上 Binance：${esc(P.engine.last_error)}（不會改用其他交易所，恢復後自動補算）</span></div>` : ""}
   <div class="grid-4">
     <div class="card kcard"><small>目前權益（含未實現）</small><div class="row"><span class="big num" id="pp-eq">—</span></div><small class="num" id="pp-eq2"></small></div>

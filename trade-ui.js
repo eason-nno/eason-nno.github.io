@@ -1,5 +1,20 @@
 /* 雙策略共用唯讀交易區。只使用已保存的委託／成交，不產生交易資料。 */
 const TRADE_TABS = [["pos", "倉位"], ["ord", "當前委託"], ["orders", "歷史委託"], ["fills", "歷史成交"], ["hist", "倉位歷史"], ["funding", "資金費紀錄"]];
+function tradeAccountBanner(name, account, now = Date.now()) {
+  const valid = ms => Number.isFinite(ms) && ms > 0 && ms <= now;
+  let first = valid(account.started_ms) ? account.started_ms : Infinity;
+  if (!Number.isFinite(first)) {
+    for (const rows of [account.orders, account.cycles]) {
+      for (const {created_ms} of rows || []) {
+        if (valid(created_ms)) first = Math.min(first, created_ms);
+      }
+    }
+  }
+  const date = Number.isFinite(first) ? tpeDate(first) : null;
+  const days = date ? (Date.parse(tpeDate(now)) - Date.parse(date)) / 86400000 + 1 : null;
+  return `<div class="ro-banner">${esc(name)}・起始日 ${date || "—"}・累計 ${days == null ? "—" : days + " 天"}</div>`;
+}
+
 function formatLeverage(value) {
   return value == null || !Number.isFinite(Number(value)) ? "—" : `${Number(value).toLocaleString("en-US",{maximumFractionDigits:8})}X`;
 }
