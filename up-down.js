@@ -5,7 +5,7 @@ const UP_DOWN_FILE = "up-down.json";
 const UP_DOWN_ROUTE = "#/paper/up-down";
 const UP_DOWN_PERIODS = new Map([[5, "5 分鐘"], [15, "15 分鐘"], [60, "1 小時"]]);
 const UP_DOWN_STATES = {
-  awaiting_key: "等待資料來源設定", observing: "觀察中", ready: "運作中", unavailable: "資料來源暫不可用",
+  awaiting_key: "等待資料來源設定", observing: "觀察中", ready: "盤口與模型就緒", unavailable: "資料來源暫不可用",
 };
 const UP_DOWN_TRAINING = {
   ready: "訓練完成", trained: "訓練完成", observing: "觀察中", collecting: "收集已結算資料",
@@ -104,6 +104,8 @@ function upDownPeriodHTML(minutes, data = {}) {
         ? [["停止交易", upDownTime(market.trade_ends_at)]] : []),
       ["漲 最高買價／最低賣價", `${upDownNumber(market.up_bid, 3)}／${upDownNumber(market.up_ask, 3)}`],
       ["跌 最高買價／最低賣價", `${upDownNumber(market.down_bid, 3)}／${upDownNumber(market.down_ask, 3)}`],
+      ...(typeof market.book_ready === "boolean"
+        ? [["官方委託簿", market.book_ready ? "已核對買賣深度" : "等待有效買賣深度"]] : []),
       ...(typeof market.up_indicative === "number" || typeof market.down_indicative === "number"
         ? [["漲／跌 參考份額價", `${upDownNumber(market.up_indicative, 3)}／${upDownNumber(market.down_indicative, 3)}`]] : []),
       ["吃單費率（基準）", buyFee === "—" ? buyFee : buyFee + "%"], ["行情時間", upDownTime(market.updated_at)],
