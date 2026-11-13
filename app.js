@@ -265,7 +265,7 @@ function applyStatus(raw, revisions = raw.sections || {}) {
   }
   if (st.published_at !== DATA.published || !!st.stale !== !!DATA.stale) changed.add("status.json");
   if (!Object.keys(revisions).length && DATA.published && changed.size) {
-    for (const name of ["runs.json", "recent.json", "market.json", "settings.json", "paper.json", "new-paper.json", "ai-usage.json"]) {
+    for (const name of ["runs.json", "recent.json", "market.json", "settings.json", "paper.json", "new-paper.json", UP_DOWN_FILE, "ai-usage.json"]) {
       if (!DATA.live[name]) { delete DATA.cache[name]; changed.add(name); }
     }
   }
@@ -466,7 +466,7 @@ function renderNav(active) {
     `<details class="nav-dropdown ${active === k ? "active" : ""}"><summary>${ic}<span>${t}</span><span class="chevron">▾</span></summary><div class="nav-menu"><a href="#/paper" ${location.hash === "#/paper" ? 'aria-current="page"' : ""}>AI 團隊策略</a>${Object.entries(STRATEGY_ACCOUNTS).map(([id,name]) => {
       const route = strategyRoute(id);
       return `<a href="${route}" ${location.hash.split("?")[0] === route ? 'aria-current="page"' : ""}>${name}</a>`;
-    }).join("")}</div></details>` :
+    }).join("")}<a href="${UP_DOWN_ROUTE}" ${location.hash.split("?")[0] === UP_DOWN_ROUTE ? 'aria-current="page"' : ""}>漲跌合約</a></div></details>` :
     `<a href="${h}" class="${k === active ? "active" : ""}" ${k === active ? 'aria-current="page"' : ""}>${ic}<span>${t}</span></a>`).join("") +
     `<a href="#/settings" class="${active === "settings" ? "active" : ""}">${ICON.gear}<span>設定</span></a>`;
   const dd = $(".nav-dropdown");
@@ -1782,8 +1782,10 @@ async function route() {
   window.scrollTo(0, 0);
   try {
     let m;
-    if (/^\/(coin\/|paper(?:\/|$)|team$)/.test(path) || path === "/" || path === "") MK.start();
-    if (/^\/(coin\/|paper(?:\/|$))/.test(path)) await loadChartLibrary();
+    if (path !== UP_DOWN_ROUTE.slice(1)) {
+      if (/^\/(coin\/|paper(?:\/|$)|team$)/.test(path) || path === "/" || path === "") MK.start();
+      if (/^\/(coin\/|paper(?:\/|$))/.test(path)) await loadChartLibrary();
+    }
     if (h !== (location.hash || "#/")) return;
     if (path === "/" || path === "") { renderNav("home"); await pageOverview(); }
     else if ((m = path.match(/^\/coin\/([A-Za-z0-9]+)/))) { renderNav("coin"); await pageCoin(m[1], params); }
@@ -1792,6 +1794,7 @@ async function route() {
     else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper("test1", params); }
     else if (path === "/paper/test2") { renderNav("paper"); await pageNewPaper("test2", params); }
     else if (path === "/paper/test3") { renderNav("paper"); await pageNewPaper("test3", params); }
+    else if (path === UP_DOWN_ROUTE.slice(1)) { renderNav("paper"); await pageUpDown(); }
     else if (path === "/reports") { renderNav("reports"); await pageReports(params); }
     else if (path === "/training" || path === "/reports/training") { renderNav("training"); await pageTraining(params); }
     else if ((m = path.match(/^\/report\/(.+)$/))) { renderNav("reports"); await pageReport(decodeURIComponent(m[1])); }
