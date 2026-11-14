@@ -223,20 +223,34 @@ const noteHTML = () => "";
 /* AI 判斷層共用 */
 const DIRS = { LONG: { t: "做多", c: "up", v: "long", pill: "low" }, SHORT: { t: "做空", c: "down", v: "short", pill: "high" }, WAIT: { t: "觀望", c: "warn", v: "wait", pill: "mid" } };
 const ROLE = Object.fromEntries(ROLES.map((r) => [r.key, r]));
-const TRIG = { schedule: "排程", manual: "手動" };
+const TRIG = { schedule: "排程", manual: "手動", condition: "條件達成重評" };
+const ACTIONS = {WAIT:"觀望",OPEN:"新開倉",HOLD:"續抱",CLOSE:"只平倉",REVERSE:"反手",UPDATE_RISK:"調整保護",CANCEL_ORDER:"取消委託"};
+function actionOf(run) { return run.action ?? run.result?.decision?.action; }
+function actionHTML(run) {
+  const action = actionOf(run), reason = run.execution_reason ?? run.result?.execution?.reason;
+  return `<small style="display:block">帳戶：${esc(ACTIONS[action] || "動作未記錄")}</small>${reason ? `<small class="muted" style="display:block">${esc(reason)}</small>` : ""}`;
+}
+function entryPlansHTML(plans) {
+  const status = {watching:"等待條件",waiting_data:"等待行情",triggered:"條件已達成",researching:"團隊重新評估中",reviewed:"已完成重評",failed:"重評未完成",expired:"已到期",invalidated:"已失效",superseded:"已被新決策取代"};
+  const kind = {close_above:"收盤高於",close_below:"收盤低於",rejection_up:"回測區間後向上收線",rejection_down:"反彈區間後向下收線"};
+  return `<section class="card"><div class="card-h"><h2>條件進場追蹤</h2></div><p class="note">條件達成後，以新快照交由完整 AI 團隊重新裁決。候選停損停利尚未成為委託。</p>${plans.length ? plans.map(r => {
+    const p = r.plan || {};
+    return `<details class="din"><summary>${esc(baseOf(r.symbol))}・${esc(status[r.status] || r.status)}・${fmtTime(r.created_at)}</summary><div class="note" style="padding:12px"><p>${esc(r.reason || "")}</p><p>候選${p.side === "SHORT" ? "做空" : "做多"}：進場 ${fmtLv(p.entry_price)}／停損 ${fmtLv(p.stop_loss)}／停利 ${fmtLv(p.take_profit)}・部位 ${esc(p.position_size_pct)}%</p><p>失效價 ${fmtLv(p.invalidation_price)}・到期 ${fmtTime(r.expires_at)}</p>${(p.conditions || []).map(c => `<p>${esc(c.timeframe)} ${esc(kind[c.kind] || c.kind)} ${fmtLv(c.level)}${c.upper == null ? "" : "–" + fmtLv(c.upper)}（${esc(c.lookback_bars)} 根內）</p>`).join("")}<p>${esc(p.rationale || "")}</p><a class="ok" href="#/report/${encodeURIComponent(r.report_id)}">原核准研究</a>${r.triggered_run_id ? `・<a class="ok" href="#/team?symbol=${encodeURIComponent(r.symbol)}&report=${encodeURIComponent(r.triggered_run_id)}">查看重評流程</a>` : ""}</div></details>`;
+  }).join("") : '<p class="note">尚無核准的條件計畫；沒有優勢時維持觀望。</p>'}</section>`;
+}
 const fmtLv = (x) => (x == null ? "—" : fmtPrice(x, 2));
 function aiPill(ai, status) {
   if (status === "running") return `<span class="pill run">● AI 分析中</span>`;
   if (!ai) return `<span class="status-dot"><i></i>尚未分析</span>`;
   const d = DIRS[ai.decision] || DIRS.WAIT;
-  return `<span class="pill ${d.pill}" title="AI 最終決策・${esc(fmtTime(ai.created_at))}">${d.t}・${ai.confidence}</span><small class="dim" style="display:block;margin-top:3px">${esc(fmtTime(ai.created_at))}</small>`;
+  return `<span class="pill ${d.pill}" title="AI 市場方向・${esc(fmtTime(ai.created_at))}">${d.t}・${ai.confidence}</span>${actionHTML(ai)}<small class="dim" style="display:block;margin-top:3px">${esc(fmtTime(ai.created_at))}</small>`;
 }
 function verdictHTML(ai, side) {
   if (!ai) return `<div class="verdict empty"><div class="v-main"><b>尚未執行 AI 分析</b><small>等待排程，或由本機控制台手動分析</small></div>${side || ""}</div>`;
   const dec = ai.result?.decision || {}; const d = DIRS[ai.decision] || DIRS.WAIT;
-  return `<div class="verdict ${d.v}"><div class="v-main"><small>AI 最終決策・持有約 ${holdTxt(ai.settings?.holding_period_days ?? ai.result?.settings?.holding_period_days ?? 1)}</small><b class="${d.c}">${d.t}<span class="conf">信心 ${ai.confidence}/100</span></b>
+  return `<div class="verdict ${d.v}"><div class="v-main"><small>AI 市場方向・持有約 ${holdTxt(ai.settings?.holding_period_days ?? ai.result?.settings?.holding_period_days ?? 1)}</small><b class="${d.c}">${d.t}<span class="conf">信心 ${ai.confidence}/100</span></b>${actionHTML(ai)}
     <small>${esc(fmtTime(ai.created_at))}（台北）・${esc(TRIG[ai.trigger] || "")}・風險 ${esc(dec.risk_level || "—")}</small></div>${side || ""}</div>
-    <div class="lv"><div><small>進場</small><b class="num">${fmtLv(ai.entry)}</b></div><div><small>停損</small><b class="num down">${fmtLv(ai.stop)}</b></div><div><small>停利</small><b class="num up">${fmtLv(ai.take_profit)}</b></div><div><small>建議部位</small><b class="num">${dec.position_size_pct != null ? dec.position_size_pct + "%" : "—"}</b></div></div>`;
+    <div class="lv"><div><small>${actionOf(ai) === "WAIT" ? "觀察觸發價（未下單）" : "進場"}</small><b class="num">${fmtLv(ai.entry)}</b></div><div><small>停損</small><b class="num down">${fmtLv(ai.stop)}</b></div><div><small>停利</small><b class="num up">${fmtLv(ai.take_profit)}</b></div><div><small>建議部位</small><b class="num">${dec.position_size_pct != null ? dec.position_size_pct + "%" : "—"}</b></div></div>`;
 }
 const scoreBar = (b) => b == null ? `<div class="bbbar na">—</div>` : `<div class="bbbar">${b > 0 ? `<div class="b" style="width:${b}%">${b}</div>` : ""}${b < 100 ? `<div class="s" style="width:${100 - b}%">${100 - b}</div>` : ""}</div>`;
 
@@ -1259,6 +1273,7 @@ async function pagePaper() {
     <div class="card kcard"><small>最大回撤（已實現權益）</small><div class="row"><span class="big num ${P.max_drawdown_pct > 0 ? "down" : ""}">${P.max_drawdown_pct.toFixed(2)}%</span></div><small class="num">含成交手續費與資金費</small></div>`,
     equity: tradeEquityHTML("eq-chart", "已實現（平倉 + 資金費）＋ 目前含未實現"),
     sections: `  <div style="margin-top:16px">
+    ${entryPlansHTML(P.entry_plans || [])}
     <section class="card"><div class="card-h"><h2>${ICON.people || ICON.shield}夜間持倉評估</h2></div><p class="note">投資組合經理於設定的停報時段每小時檢查原版現有持倉／委託，不產生新研究報告；價格保護持續運作。開關位於本機控制台。</p>
     ${(P.position_reviews||[]).length?`<div class="review-list">${P.position_reviews.map(r=>`<details class="din"><summary>${esc(baseOf(r.symbol))}・${fmtTime(r.created_at)}・${esc(({completed:"已評估",failed:"未完成",interrupted:"已中斷",running:"評估中",ready:"驗證中"})[r.status]||r.status)}・${esc(({HOLD:"續抱",CLOSE:"只平倉",REVERSE:"反手",UPDATE_RISK:"調整保護",CANCEL_ORDER:"取消委託",WAIT:"觀望"})[r.decision?.action]||"")}</summary><div class="note" style="padding:12px"><p>${esc(r.decision?.executive_summary||r.error||"等待評估結果")}</p><p>${esc(r.execution?.reason||"")}</p><p>下次檢查：${esc(r.decision?.invalidation||"—")}・模型 ${esc(r.model||"—")}</p>${r.report_id?`<a class="ok" href="#/report/${encodeURIComponent(r.report_id)}">參考研究</a>`:""}</div></details>`).join("")}</div>`:'<p class="note">尚無夜間評估紀錄；沒有持倉／委託時不呼叫AI。</p>'}</section>
 
@@ -1406,11 +1421,11 @@ async function pageReports(params) {
     const visible = result.rows.map(row => displayRun(row, status));
     const pager = reportPager(result, "#/reports", "研究報告分頁");
     return `${dailyUsageHTML(usage) || '<section class="card"><p class="note">每日 API 用量尚未推送。</p></section>'}<section class="card reports-list"><div class="card-h"><h2>${ICON.report}加密貨幣 AI 研究報告</h2><div class="right"><span class="chip-muted">共 ${result.count} 份</span></div></div>
-    ${visible.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>最終決策</th><th>進場 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="第 1 至 5 組，含失敗重試">呼叫次數（依組別）</th><th>耗時</th><th></th></tr></thead><tbody>
+    ${visible.length ? `<table class="tbl"><thead><tr><th>幣種</th><th>分析時間（台北）</th><th>觸發</th><th>市場方向 / 帳戶動作</th><th>進場或觀察價 / 停損 / 停利</th><th>模型（快速 / 深度）</th><th title="第 1 至 5 組，含失敗重試">呼叫次數（依組別）</th><th>耗時</th><th></th></tr></thead><tbody>
     ${visible.map((r) => { const d = DIRS[r.decision] || DIRS.WAIT; const m = r.models || {};
       return `<tr class="run-row" data-sync-key="${esc(r.id)}"><td><div class="coin">${coinIcon(baseOf(r.symbol), 24)}<div><b>${esc(baseOf(r.symbol))}</b><small>${esc(r.name)}</small></div></div></td><td class="num">${fmtTime(r.created_at)}</td><td>${esc(TRIG[r.trigger] || r.trigger)}</td>
-        <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "stopped" ? `<span class="pill gray">已停止</span>` : r.status === "sync_stale" ? `<span class="pill gray">同步中斷</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
-        <td class="num">${r.status === "done" ? `${fmtLv(r.entry)} / <span class="down">${fmtLv(r.stop)}</span> / <span class="up">${fmtLv(r.take_profit)}</span>` : "—"}</td>
+        <td>${r.status === "done" ? `<span class="pill ${d.pill}">${d.t}</span> <span class="muted num">信心 ${r.confidence}</span>${actionHTML(r)}${r.resumed ? ` <span class="pill mid" title="補完成於 ${esc(fmtTime(r.resumed.at))}">補完成</span>` : ""}` : r.status === "failed" ? `<span class="pill gray" title="${esc(friendlyErr(r.error))}">失敗</span>` : r.status === "stopped" ? `<span class="pill gray">已停止</span>` : r.status === "sync_stale" ? `<span class="pill gray">同步中斷</span>` : r.status === "paused" ? `<span class="pill gray">已暫停</span>` : r.status === "pausing" ? `<span class="pill gray">正在暫停</span>` : `<span class="pill run">分析中</span>`}</td>
+        <td class="num">${r.status === "done" ? `${fmtLv(r.entry)} / <span class="down">${fmtLv(r.stop)}</span> / <span class="up">${fmtLv(r.take_profit)}</span>${actionOf(r) === "WAIT" ? '<small style="display:block">觀察觸發價・未下單</small>' : ''}` : "—"}</td>
         <td class="muted num" style="font-size:12px">${m.quick ? `${esc(m.quick.used)}（槽位 ${m.quick.key_slot ?? "—"}）<br>${esc(m.deep.used)}（槽位 ${m.deep.key_slot ?? "—"}）${m.quick.fallback_reason ? '<br><span class="warn">快速已切換備援</span>' : ""}${m.deep.fallback_reason ? '<br><span class="warn">深度已切換備援</span>' : ""}` : "—"}</td>
         <td class="num" style="white-space:nowrap" title="${esc(callsTitle(r.calls))}">${fmtCalls(r.calls)}${r.calls?.reconstructed ? '<span class="warn" title="原始執行的呼叫次數由紀錄還原">＊</span>' : ""}</td><td class="num">${teamIncomplete(r) ? esc(teamReportDuration(r)) : r.duration_s ? Math.round(r.duration_s) + " 秒" : "—"}</td>
         <td class="c">${r.status === "done" ? `<a class="ok" href="#/report/${encodeURIComponent(r.id)}">查看</a>` : teamIncomplete(r) ? `<a class="ok" href="${esc(teamReportHref(r))}">查看流程</a>` : ""}</td></tr>`; }).join("")}
