@@ -1,4 +1,4 @@
-/* 雙策略共用唯讀交易區。只使用已保存的委託／成交，不產生交易資料。 */
+/* 模擬帳戶共用唯讀交易區。只使用已保存的委託／成交，不產生交易資料。 */
 const TRADE_TABS = [["pos", "倉位"], ["ord", "當前委託"], ["orders", "歷史委託"], ["fills", "歷史成交"], ["hist", "倉位歷史"], ["funding", "資金費紀錄"]];
 function tradeAccountBanner(name, account, now = Date.now()) {
   const valid = ms => Number.isFinite(ms) && ms > 0 && ms <= now;
@@ -30,6 +30,20 @@ function tradeEstimatedCloseFee(account, price, qty) {
 function formatLeverage(value) {
   return value == null || !Number.isFinite(Number(value)) ? "—" : `${Number(value).toLocaleString("en-US",{maximumFractionDigits:8})}X`;
 }
+function tradeDashboard(name, account, {metrics, open, pending, alert = "", equity = "", sections = ""}) {
+  return `${tradeAccountBanner(name, account)}${alert}<div class="grid-4">${metrics}</div>
+    ${tradePanelHTML(open, pending)}${equity}${sections}`;
+}
+function tradeEquityHTML(id, label) {
+  return `<section class="card new-section"><div class="card-h"><h2>${ICON.trendUp}權益曲線</h2><span class="chip-muted">${esc(label)}</span></div>
+    <div id="${id}" style="height:240px"></div></section>`;
+}
+function tradeTable(headers, rows, empty) {
+  if (!rows.length) return `<div class="empty-state"><b>${esc(empty)}</b></div>`;
+  return `<div class="table-scroll"><table class="tbl trade-record-table responsive-trade-table"><thead><tr>${headers.map(label => `<th scope="col">${esc(label)}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(row => `<tr>${row.map((value, index) => `<td data-label="${esc(headers[index])}">${esc(value)}</td>`).join("")}</tr>`).join("")}</tbody>
+    </table></div>`;
+}
 function tradePanelHTML(open, pending) {
   return `<section class="card paper-history trade-panel"><div class="card-h"><div class="tabs pp-tabs" id="pp-tabs" role="tablist" aria-label="模擬交易紀錄">${TRADE_TABS.map(([k,t])=>`<button class="tab" id="trade-tab-${k}" role="tab" aria-controls="pp-body" data-t="${k}">${t}${k === "pos" ? `（${open}）` : k === "ord" ? `（${pending}）` : ""}</button>`).join("")}</div></div><div id="pp-body" role="tabpanel"></div></section>`;
 }
@@ -51,7 +65,7 @@ function tradePage(items, pages, tab) {
   const size = 5, total = Math.max(1, Math.ceil(items.length / size));
   const page = Math.max(0, Math.min(pages[tab] || 0, total - 1));
   pages[tab] = page;
-  const footer = total === 1 ? "" : `<nav class="trade-pager" aria-label="倉位分頁">
+  const footer = total === 1 ? "" : `<nav class="trade-pager" aria-label="交易紀錄分頁">
     <button type="button" class="tab outline" data-trade-page="${page - 1}" ${page === 0 ? "disabled" : ""}>上一頁</button>
     <span aria-live="polite">${page + 1} / ${total} 頁・共 ${items.length} 筆</span>
     <button type="button" class="tab outline" data-trade-page="${page + 1}" ${page === total - 1 ? "disabled" : ""}>下一頁</button>

@@ -12,7 +12,6 @@ const UP_DOWN_TRAINING = {
   insufficient_data: "樣本不足", not_started: "尚未訓練", waiting_training: "尚未訓練", unavailable: "訓練資料不可用",
   validation_failed: "未通過驗證",
 };
-const UP_DOWN_PAGE_SIZE = 10;
 
 function upDownStatusLabel(status) {
   return Object.hasOwn(UP_DOWN_STATES, status) ? UP_DOWN_STATES[status] : "待確認";
@@ -128,91 +127,108 @@ function upDownPeriodHTML(minutes, data = {}) {
   </article>`;
 }
 
-function upDownTable(headers, rows, empty) {
-  if (!rows.length) return `<p class="dim up-down-empty">${esc(empty)}</p>`;
-  return `<div class="up-down-table-wrap"><table class="tbl up-down-table">
-    <thead><tr>${headers.map(label => `<th scope="col">${esc(label)}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map(row => `<tr>${row.map((value, index) =>
-      `<td data-label="${esc(headers[index])}">${esc(value)}</td>`).join("")}</tr>`).join("")}</tbody>
-    </table></div>`;
+function upDownTrades(snapshot, tab, pages) {
+  const periodName = row => UP_DOWN_PERIODS.get(row.period_minutes) || "—";
+  const name = row => `BTC・${periodName(row)}`;
+  const positions = snapshot.positions || [], orders = snapshot.orders || [], history = snapshot.history || [];
+  const ordersHTML = list => tradeTable(["合約", "方向", "動作", "委託金額／份數", "限價", "到期時間（台北）", "模型"],
+    list.map(o => [o.period_minutes ? name(o) : o.market_id || "—", upDownDirection(o.direction), upDownAction(o.action),
+      o.action === "SELL" ? "全部" : upDownMoney(o.amount), upDownNumber(o.price, 3), upDownTime(o.expires_at), o.model || "—"]),
+    "目前無待成交委託");
+  if (tab === "funding") return '<div class="empty-state"><b>漲跌合約無資金費</b></div>';
+  const saved = snapshot.fills || [];
+  const savedSales = new Set(saved.filter(row => row.action === "SELL").map(row => `${row.market_id}:${row.at}`));
+  const fills = [...saved, ...history.filter(row => row.result === "SELL" && !savedSales.has(`${row.market_id}:${row.settled_at}`))
+    .map(row => ({...row, action: "SELL", at: row.settled_at, price: row.exit_share_price}))]
+    .sort((a, b) => b.at - a.at);
+  const { rows, footer } = tradePage({ pos: positions, ord: orders, hist: history, orders: snapshot.order_history || [],
+    fills }[tab] || [], pages, tab);
+  if (tab === "pos") return tradeTable(["合約", "方向", "投入", "份數", "成交價", "手續費", "結算比較價", "到期時間（台北）", "模型"],
+    rows.map(o => [name(o), upDownDirection(o.direction), upDownMoney(o.stake), upDownNumber(o.shares, 4),
+      upDownNumber(o.entry_price, 3), upDownMoney(o.fees), upDownNumber(o.target_price), upDownTime(o.expires_at), o.model || "—"]),
+    "目前沒有倉位") + footer;
+  if (tab === "ord") return ordersHTML(rows) + footer;
+  if (tab === "orders") {
+    const labels = {filled: "已成交", pending: "掛單中", unfilled: "未成交", cancelled: "已取消", expired: "已到期", closed: "已結束"};
+    return tradeTable(["委託時間（台北）", "合約", "方向", "動作", "申請金額", "保護價／限價", "狀態", "模型"],
+      rows.map(o => [upDownTime(o.created_at), name(o), upDownDirection(o.direction), upDownAction(o.action),
+        o.action === "SELL" ? "全部" : upDownMoney(o.amount), upDownNumber(o.price, 3),
+        labels[o.current_status || o.status] || "—", o.model || "—"]), "尚無已保存的歷史委託資料") + footer;
+  }
+  if (tab === "fills") return tradeTable(["成交時間（台北）", "合約", "方向", "成交動作", "成交價", "份數", "手續費", "模型"],
+    rows.map(o => [upDownTime(o.at), name(o), upDownDirection(o.direction), upDownAction(o.action), upDownNumber(o.price, 3),
+      upDownNumber(o.shares, 4), upDownMoney(o.fee), o.model || "—"]), "尚無已保存的成交紀錄") + footer;
+  return tradeTable(["合約", "方向", "投入", "手續費", "結算比較價", "BTC 結算價", "賣出份額價", "結果",
+    "已實現淨損益", "完成時間（台北）", "模型"],
+    rows.map(o => [name(o), upDownDirection(o.direction), upDownMoney(o.stake), upDownMoney(o.fees),
+      upDownNumber(o.target_price), upDownNumber(o.settlement_price), upDownNumber(o.exit_share_price, 3), upDownResult(o.result),
+      upDownMoney(o.pnl, true), upDownTime(o.settled_at), o.model || "—"]), "尚無平倉或結算紀錄") + footer;
 }
 
-function upDownPageHTML(snapshot, historyPage, unavailable = false) {
-  if (!snapshot) return `<section class="card up-down-card" aria-labelledby="up-down-title">
-    <h1 id="up-down-title">BTC 漲跌合約</h1><p class="dim">${unavailable ? "資料暫時無法讀取，將在下一次同步時重試。" : "等待主機發布模擬帳戶資料。"}</p></section>`;
-  const periods = new Map((Array.isArray(snapshot.periods) ? snapshot.periods : []).map(period => [period.minutes, period]));
-  const positions = Array.isArray(snapshot.positions) ? snapshot.positions : [];
-  const orders = Array.isArray(snapshot.orders) ? snapshot.orders : [];
-  const history = Array.isArray(snapshot.history) ? snapshot.history : [];
-  const pageCount = Math.max(1, Math.ceil(history.length / UP_DOWN_PAGE_SIZE));
-  const page = Math.min(pageCount, historyPage);
-  const status = upDownStatusLabel(snapshot.status);
-  const periodName = (record) => UP_DOWN_PERIODS.get(record.period_minutes) || "—";
-  return `<div class="up-down-page">
-    <section class="card up-down-card" aria-labelledby="up-down-title" id="up-down-summary">
-      <div class="up-down-heading"><h1 id="up-down-title">BTC 漲跌合約</h1><span class="tag">${status}</span></div>
-      <p class="dim">三個週期共用同一個模擬帳戶・更新 ${esc(upDownTime(snapshot.updated_at))}（台北）</p>
-      ${snapshot.status_reason ? `<p class="up-down-reason">${esc(snapshot.status_reason)}</p>` : ""}
-      <dl class="up-down-metrics up-down-account">${upDownFields([
-        ["起始資金", upDownMoney(snapshot.initial_balance)], ["可用資金", upDownMoney(snapshot.balance)],
-        ["委託預留", upDownMoney(snapshot.reserved)], ["已實現淨損益", upDownMoney(snapshot.realized_pnl, true)],
-      ])}</dl>
-    </section>
-    <section class="up-down-periods" aria-label="各週期合約、決策與訓練">
-      ${Array.from(UP_DOWN_PERIODS.keys(), minutes => upDownPeriodHTML(minutes, periods.get(minutes))).join("")}
-    </section>
-    <section class="card up-down-card" id="up-down-positions">
-      <h2>目前持倉</h2>
-      ${upDownTable(["週期", "方向", "投入", "份數", "成交價", "手續費", "比較價", "到期時間", "模型"],
-        positions.map(row => [periodName(row), upDownDirection(row.direction), upDownMoney(row.stake),
-          upDownNumber(row.shares, 4), upDownNumber(row.entry_price, 3), upDownMoney(row.fees),
-          upDownNumber(row.target_price), upDownTime(row.expires_at), row.model || "—"]), "目前無持倉")}
-    </section>
-    <section class="card up-down-card" id="up-down-orders">
-      <h2>待成交委託</h2>
-      ${upDownTable(["合約", "方向", "動作", "委託金額／份數", "限價", "到期時間", "模型"],
-        orders.map(row => [row.market_id || "—", upDownDirection(row.direction), upDownAction(row.action),
-          row.action === "SELL" ? "全部" : upDownMoney(row.amount),
-          upDownNumber(row.price, 3), upDownTime(row.expires_at), row.model || "—"]),
-        "目前無待成交委託")}
-    </section>
-    <section class="card up-down-card" id="up-down-history">
-      <h2>結算紀錄</h2>
-      ${upDownTable(["週期", "方向", "投入", "手續費", "比較價", "BTC 結算價", "賣出份額價", "結果", "淨損益", "完成時間", "模型"],
-        history.slice((page - 1) * UP_DOWN_PAGE_SIZE, page * UP_DOWN_PAGE_SIZE).map(row =>
-          [periodName(row), upDownDirection(row.direction), upDownMoney(row.stake), upDownMoney(row.fees),
-            upDownNumber(row.target_price), upDownNumber(row.settlement_price), upDownNumber(row.exit_share_price, 3), upDownResult(row.result),
-            upDownMoney(row.pnl, true), upDownTime(row.settled_at), row.model || "—"]), "尚無結算紀錄")}
-      ${pageCount > 1 ? `<div class="up-down-pages"><button class="btn sm" type="button" data-history-page="${page - 1}" ${page === 1 ? "disabled" : ""}>上一頁</button>
-        <span>第 ${page}／${pageCount} 頁</span><button class="btn sm" type="button" data-history-page="${page + 1}" ${page === pageCount ? "disabled" : ""}>下一頁</button></div>` : ""}
-    </section></div>`;
+function upDownPageHTML(snapshot, unavailable = false) {
+  if (!snapshot) return `<section class="card" aria-label="BTC 漲跌合約"><div class="empty-state"><b>${unavailable
+    ? "資料暫時無法讀取，將在下一次同步時重試。" : "等待主機發布模擬帳戶資料。"}</b></div></section>`;
+  const periods = new Map((snapshot.periods || []).map(period => [period.minutes, period]));
+  const noPositions = !(snapshot.positions || []).length;
+  const equity = snapshot.equity ?? (noPositions && Number.isFinite(snapshot.initial_balance) && Number.isFinite(snapshot.realized_pnl)
+    ? snapshot.initial_balance + snapshot.realized_pnl : null);
+  return tradeDashboard("漲跌合約", snapshot, {
+    open: (snapshot.positions || []).length, pending: (snapshot.orders || []).length,
+    metrics: `
+      <div class="card kcard"><small>目前權益（含未實現）</small><div class="row"><span class="big num">${upDownNumber(equity)}</span></div>
+        <small>可用資金 ${upDownMoney(snapshot.balance)}・委託預留 ${upDownMoney(snapshot.reserved)}</small></div>
+      <div class="card kcard"><small>已入帳淨損益</small><div class="row"><span class="big num ${signCls(snapshot.realized_pnl)}">${upDownNumber(snapshot.realized_pnl)}</span></div>
+        <small>手續費 ${upDownMoney(snapshot.fees_paid)}</small></div>
+      <div class="card kcard"><small>勝率</small><div class="row"><span class="big num">${Number.isFinite(snapshot.win_rate) ? upDownNumber(snapshot.win_rate) + "%" : "—"}</span></div>
+        <small>${Number.isFinite(snapshot.trades) ? `${snapshot.wins} 勝／${snapshot.trades} 筆已平倉` : "尚無統計"}</small></div>
+      <div class="card kcard"><small>最大回撤（已實現權益）</small><div class="row"><span class="big num ${snapshot.max_drawdown_pct > 0 ? "down" : ""}">${Number.isFinite(snapshot.max_drawdown_pct)
+        ? upDownNumber(snapshot.max_drawdown_pct) + "%" : "—"}</span></div><small>含成交手續費</small></div>`,
+    equity: tradeEquityHTML("up-down-curve", "已入帳權益・含手續費"),
+    sections: `<section class="card new-section"><div class="card-h"><h2>${ICON.brief}漲跌合約經理</h2><span class="chip-muted">${upDownStatusLabel(snapshot.status)}</span></div>
+      <p class="note">${esc(snapshot.status_reason || "")}・更新 ${esc(upDownTime(snapshot.updated_at))}（台北）</p>
+      <div class="up-down-periods" aria-label="各週期行情、決策與訓練">${Array.from(UP_DOWN_PERIODS, ([minutes]) =>
+        upDownPeriodHTML(minutes, periods.get(minutes))).join("")}</div></section>`,
+  });
 }
 
 async function pageUpDown() {
-  setTitle("BTC 漲跌合約");
-  const app = $("#app");
-  let snapshot = null;
-  let page = 1;
-  let active = true;
-  pageCleanup.push(() => { active = false; });
-  const refresh = async () => {
-    let unavailable = false;
-    try {
-      const data = await J(UP_DOWN_FILE);
-      if (data && typeof data === "object" && !Array.isArray(data)) snapshot = data;
-    } catch (error) {
-      unavailable = !snapshot && !String(error.message).includes("資料尚未同步");
+  setTitle("漲跌合約");
+  const view = location.hash, app = $("#app"), pages = {};
+  let snapshot = null, tab = "pos", series, chart;
+  const active = () => location.hash === view;
+  const render = (next = tab) => {
+    if (!active() || !snapshot || !$("#pp-body")) return;
+    tab = next;
+    selectTradeTab(tab);
+    patchHTML($("#pp-body"), upDownTrades(snapshot, tab, pages));
+    bindTradePager(pages, tab, render);
+  };
+  async function refresh(isActive = active) {
+    let data;
+    try { data = await J(UP_DOWN_FILE); }
+    catch (error) {
+      if (isActive() && !snapshot) patchHTML(app, upDownPageHTML(null, !String(error.message).includes("資料尚未同步")));
+      return;
     }
-    if (active) patchHTML(app, upDownPageHTML(snapshot, page, unavailable));
-  };
-  const click = (event) => {
-    const button = event.target.closest("[data-history-page]");
-    if (!button || button.disabled) return;
-    page = Number(button.dataset.historyPage);
-    patchHTML(app, upDownPageHTML(snapshot, page));
-  };
-  app.addEventListener("click", click);
-  pageCleanup.push(() => app.removeEventListener("click", click));
+    if (!isActive() || !data || typeof data !== "object" || Array.isArray(data) || data === snapshot) return;
+    snapshot = data;
+    patchHTML(app, upDownPageHTML(snapshot), "#up-down-curve,#pp-body");
+    bindTradeTabs(render);
+    render();
+    if (!series) {
+      chart = makeChart($("#up-down-curve"), 240, {timeScale: {timeVisible: true}});
+      series = chart.addAreaSeries({lineColor:"#0ecb81", topColor:"rgba(14,203,129,.2)", bottomColor:"rgba(14,203,129,0)"});
+    }
+    const points = new Map((snapshot.curve || []).map(p => [Math.floor(p.t / 1000) + TZ_SHIFT, p.equity]));
+    if (!points.size && Number.isFinite(snapshot.updated_at) && Number.isFinite(snapshot.initial_balance)
+        && snapshot.realized_pnl === 0 && !snapshot.history?.length) {
+      points.set(Math.floor(snapshot.updated_at / 1000) + TZ_SHIFT, snapshot.initial_balance);
+    }
+    const visible = chart.timeScale().getVisibleLogicalRange();
+    series.setData(Array.from(points, ([time, value]) => ({time, value})));
+    if (visible) chart.timeScale().setVisibleLogicalRange(visible);
+    else chart.timeScale().fitContent();
+  }
   onData([UP_DOWN_FILE], refresh);
   await refresh();
 }

@@ -1249,24 +1249,21 @@ async function pagePaper() {
   let tab = pagePaper.tab || "pos", range = pagePaper.range || "3m";
   const pages = pagePaper.pages ||= {};
   const RANGES = [["1d", "一天", 1], ["1w", "一週", 7], ["1m", "一個月", 30], ["3m", "三個月", 90]];
-  const layout = () => `
-
-  ${tradeAccountBanner("AI 團隊策略", P)}
-  ${P.engine && P.engine.last_error && /Binance/.test(P.engine.last_error) ? `<div class="callout" style="margin-bottom:12px"><b>注意</b><span>後台暫時連不上 Binance：${esc(P.engine.last_error)}（不會改用其他交易所，恢復後自動補算）</span></div>` : ""}
-  <div class="grid-4">
+  const layout = () => tradeDashboard("AI 團隊策略", P, {
+    open: P.open.length, pending: P.pending.length,
+    alert: `${P.engine && P.engine.last_error && /Binance/.test(P.engine.last_error) ? `<div class="callout" style="margin-bottom:12px"><b>注意</b><span>後台暫時連不上 Binance：${esc(P.engine.last_error)}（不會改用其他交易所，恢復後自動補算）</span></div>` : ""}`,
+    metrics: `
     <div class="card kcard"><small>目前權益（含未實現）</small><div class="row"><span class="big num" id="pp-eq">—</span></div><small class="num" id="pp-eq2"></small></div>
     <div class="card kcard"><small>已入帳淨損益</small><div class="row"><span class="big num ${signCls(P.realized_pnl)}">${usd(P.realized_pnl)}</span></div><small class="num">價差 ${usd(P.price_pnl)}・資金費 ${usd(P.funding_net, 4)}・手續費 ${tradeFeeLabel(P.fees_paid)}</small></div>
     <div class="card kcard"><small>勝率</small><div class="row"><span class="big num">${P.win_rate == null ? "—" : P.win_rate + "%"}</span></div><small class="num">${P.wins} 勝 / ${P.trades} 筆已平倉</small></div>
-    <div class="card kcard"><small>最大回撤（已實現權益）</small><div class="row"><span class="big num ${P.max_drawdown_pct > 0 ? "down" : ""}">${P.max_drawdown_pct.toFixed(2)}%</span></div><small class="num">含成交手續費與資金費</small></div>
-  </div>
-  ${tradePanelHTML(P.open.length, P.pending.length)}
-  <section class="card" style="margin-top:16px"><div class="card-h"><h2>${ICON.trendUp}權益曲線</h2><div class="right"><span class="chip-muted">已實現（平倉 + 資金費）＋ 目前含未實現</span></div></div>
-    <div id="eq-chart" style="height:240px"></div></section>
-  <div style="margin-top:16px">
+    <div class="card kcard"><small>最大回撤（已實現權益）</small><div class="row"><span class="big num ${P.max_drawdown_pct > 0 ? "down" : ""}">${P.max_drawdown_pct.toFixed(2)}%</span></div><small class="num">含成交手續費與資金費</small></div>`,
+    equity: tradeEquityHTML("eq-chart", "已實現（平倉 + 資金費）＋ 目前含未實現"),
+    sections: `  <div style="margin-top:16px">
     <section class="card"><div class="card-h"><h2>${ICON.people || ICON.shield}夜間持倉評估</h2></div><p class="note">投資組合經理於設定的停報時段每小時檢查原版現有持倉／委託，不產生新研究報告；價格保護持續運作。開關位於本機控制台。</p>
     ${(P.position_reviews||[]).length?`<div class="review-list">${P.position_reviews.map(r=>`<details class="din"><summary>${esc(baseOf(r.symbol))}・${fmtTime(r.created_at)}・${esc(({completed:"已評估",failed:"未完成",interrupted:"已中斷",running:"評估中",ready:"驗證中"})[r.status]||r.status)}・${esc(({HOLD:"續抱",CLOSE:"只平倉",REVERSE:"反手",UPDATE_RISK:"調整保護",CANCEL_ORDER:"取消委託",WAIT:"觀望"})[r.decision?.action]||"")}</summary><div class="note" style="padding:12px"><p>${esc(r.decision?.executive_summary||r.error||"等待評估結果")}</p><p>${esc(r.execution?.reason||"")}</p><p>下次檢查：${esc(r.decision?.invalidation||"—")}・模型 ${esc(r.model||"—")}</p>${r.report_id?`<a class="ok" href="#/report/${encodeURIComponent(r.report_id)}">參考研究</a>`:""}</div></details>`).join("")}</div>`:'<p class="note">尚無夜間評估紀錄；沒有持倉／委託時不呼叫AI。</p>'}</section>
 
-  </div>`;
+  </div>`,
+  });
 
   $("#app").innerHTML = layout();
   const posBody = open => open.length ? `
