@@ -1813,10 +1813,9 @@ async function route() {
   window.scrollTo(0, 0);
   try {
     let m;
-    if (path !== UP_DOWN_ROUTE.slice(1)) {
-      if (/^\/(coin\/|paper(?:\/|$)|team$)/.test(path) || path === "/" || path === "") MK.start();
-      if (/^\/(coin\/|paper(?:\/|$))/.test(path)) await loadChartLibrary();
-    }
+    if (path !== UP_DOWN_ROUTE.slice(1) &&
+        (/^\/(coin\/|paper(?:\/|$)|team$)/.test(path) || path === "/" || path === "")) MK.start();
+    if (/^\/(coin\/|paper(?:\/|$))/.test(path)) await loadChartLibrary();
     if (h !== (location.hash || "#/")) return;
     if (path === "/" || path === "") { renderNav("home"); await pageOverview(); }
     else if ((m = path.match(/^\/coin\/([A-Za-z0-9]+)/))) { renderNav("coin"); await pageCoin(m[1], params); }
