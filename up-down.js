@@ -5,7 +5,7 @@ const UP_DOWN_FILE = "up-down.json";
 const UP_DOWN_ROUTE = "#/paper/up-down";
 const UP_DOWN_PERIODS = new Map([[5, "5 分鐘"], [15, "15 分鐘"], [60, "1 小時"]]);
 const UP_DOWN_STATES = {
-  awaiting_key: "等待資料來源設定", observing: "觀察中", ready: "盤口與模型就緒", unavailable: "資料來源暫不可用",
+  awaiting_key: "等待資料來源設定", observing: "觀察中", ready: "盤口可用", unavailable: "資料來源暫不可用",
 };
 const UP_DOWN_TRAINING = {
   ready: "訓練完成", trained: "訓練完成", observing: "觀察中", collecting: "收集已結算資料",
@@ -112,11 +112,11 @@ function upDownPeriodHTML(minutes, data = {}) {
     <div class="up-down-subsection"><h3>最新決策</h3>
       ${decision ? `<dl class="up-down-metrics">${upDownFields([
         ["動作", upDownAction(decision.action)], ["方向", directions], ["模型", decision.model || "—"],
-        ["評估時間", upDownTime(decision.at)], [directions === "—" ? "收漲機率" : "方向機率", probability],
+        ["評估時間", upDownTime(decision.at)], [directions === "—" ? "模型收漲機率" : "模型方向機率", probability],
         ["評估合約", decision.market_id || "—"],
       ])}</dl>${decision.reason ? `<p class="up-down-reason">${esc(decision.reason)}</p>` : ""}`
       : '<p class="dim">尚無決策</p>'}</div>
-    <div class="up-down-subsection"><h3>訓練狀態</h3>
+    <div class="up-down-subsection"><h3>模型驗證（評估參考）</h3>
       ${training ? `<dl class="up-down-metrics">${upDownFields([
         ["狀態", upDownTrainingLabel(training)],
         ["訓練／驗證筆數", `${upDownNumber(training.training_count ?? training.training_samples, 0)}／${upDownNumber(training.validation_count ?? training.validation_samples, 0)}`],
