@@ -1718,7 +1718,7 @@ async function pageSettings(active) {
   const TIER_ROLES = { quick: ["market", "sentiment", "news", "onchain", "bull", "bear", "trader", "aggressive", "conservative", "neutral"], deep: ["manager", "pm"] };
   const slotSplit = (t) => { const g = {}; TIER_ROLES[t].forEach((r) => { const sl = A.role_key_slots[r] || A[t].key_slot; (g[sl] = g[sl] || []).push(ROLE_NAME[r] || r); });
     return Object.entries(g).sort().map(([sl, rs]) => `槽位 ${sl}：<span class="dim">${rs.map(esc).join("、")}</span>`).join("<br>") +
-      `<br>槽位 3（備用）：<span class="dim">排程 run 在原槽位額度用完或長退避仍失敗時接手；手動 / 補完成優先使用</span>`; };
+      `<br>槽位 3（備用）：<span class="dim">主備模型交替接手時依設定輪替可用金鑰；手動 / 補完成優先使用槽位 3</span>`; };
   const tierCard = (t) => { const c = A[t]; return `<div class="card" style="background:#20252d"><div class="card-h"><h2 style="font-size:15px">${t === "quick" ? "快速思考層" : "深度思考層"}<span class="dim" style="font-size:12px;font-weight:400;margin-left:6px">${t === "quick" ? "4 位分析師、多空研究員、交易員、3 位風控（10 位）" : "研究經理、投資組合經理（2 位）"}</span></h2></div>
     <div class="cfg" style="grid-template-columns:120px 1fr">
       <div>供應商</div><div>${esc(PROV[c.provider] || c.provider)}</div>
