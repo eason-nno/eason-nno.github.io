@@ -12,6 +12,11 @@ const UP_DOWN_TRAINING = {
   insufficient_data: "樣本不足", not_started: "尚未訓練", waiting_training: "尚未訓練", unavailable: "訓練資料不可用",
   validation_failed: "未通過驗證",
 };
+const UP_DOWN_EVALUATION = {
+  waiting_market: "等待有效場次", waiting_book: "等待有效買賣深度",
+  waiting_openai: "評估模型未設定", waiting_evaluation: "等待本輪評估",
+  evaluating: "評估中", evaluated: "本輪已評估", no_decision: "本輪無有效決策",
+};
 
 function upDownStatusLabel(status) {
   return Object.hasOwn(UP_DOWN_STATES, status) ? UP_DOWN_STATES[status] : "待確認";
@@ -87,7 +92,7 @@ function upDownFields(fields) {
 }
 
 function upDownPeriodHTML(minutes, data = {}) {
-  const { market, decision, training } = data;
+  const { market, decision, training, evaluation_status: evaluation } = data;
   const directions = upDownDirection(decision?.direction);
   const probability = typeof decision?.probability === "number" && decision.probability >= 0 && decision.probability <= 1
     ? `${upDownNumber(decision.probability * 100, 1)}%` : "—";
@@ -96,6 +101,7 @@ function upDownPeriodHTML(minutes, data = {}) {
     <div class="up-down-heading"><h2>${UP_DOWN_PERIODS.get(minutes)}</h2>${market?.market_id ? `<small title="${esc(market.market_id)}">合約 ${esc(market.market_id)}</small>` : ""}</div>
     ${market ? `<dl class="up-down-metrics">${upDownFields([
       ["BTC 參考價", upDownNumber(market.reference_price)],
+      ...(market.reference_at != null ? [["參考價時間", upDownTime(market.reference_at)]] : []),
       ["結算比較價", upDownNumber(market.target_price)],
       ["市場來源", market.provider || "—"],
       ["開盤時間", upDownTime(market.opens_at)], ["到期時間", upDownTime(market.expires_at)],
@@ -110,6 +116,7 @@ function upDownPeriodHTML(minutes, data = {}) {
       ["吃單費率（基準）", buyFee === "—" ? buyFee : buyFee + "%"], ["行情時間", upDownTime(market.updated_at)],
     ])}</dl>` : '<p class="dim">尚無可核對的合約行情</p>'}
     <div class="up-down-subsection"><h3>最新決策</h3>
+      ${Object.hasOwn(UP_DOWN_EVALUATION, evaluation) ? `<p class="dim">${esc(UP_DOWN_EVALUATION[evaluation])}</p>` : ""}
       ${decision ? `<dl class="up-down-metrics">${upDownFields([
         ["動作", upDownAction(decision.action)], ["方向", directions], ["模型", decision.model || "—"],
         ["評估時間", upDownTime(decision.at)], [directions === "—" ? "模型收漲機率" : "模型方向機率", probability],
