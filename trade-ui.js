@@ -38,10 +38,13 @@ function tradeEquityHTML(id, label) {
   return `<section class="card new-section"><div class="card-h"><h2>${ICON.trendUp}權益曲線</h2><span class="chip-muted">${esc(label)}</span></div>
     <div id="${id}" style="height:240px"></div></section>`;
 }
-function tradeTable(headers, rows, empty) {
+function tradeTable(headers, rows, empty, cellClass) {
   if (!rows.length) return `<div class="empty-state"><b>${esc(empty)}</b></div>`;
   return `<div class="table-scroll"><table class="tbl trade-record-table responsive-trade-table"><thead><tr>${headers.map(label => `<th scope="col">${esc(label)}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map(row => `<tr>${row.map((value, index) => `<td data-label="${esc(headers[index])}">${esc(value)}</td>`).join("")}</tr>`).join("")}</tbody>
+    <tbody>${rows.map((row, rowIndex) => `<tr>${row.map((value, index) => {
+      const style = cellClass?.(rowIndex, headers[index]);
+      return `<td data-label="${esc(headers[index])}"${style ? ` class="${esc(style)}"` : ""}>${esc(value)}</td>`;
+    }).join("")}</tr>`).join("")}</tbody>
     </table></div>`;
 }
 function tradePanelHTML(open, pending) {

@@ -169,7 +169,8 @@ function upDownTrades(snapshot, tab, pages) {
     "已實現淨損益", "完成時間（台北）", "模型"],
     rows.map(o => [name(o), upDownDirection(o.direction), upDownMoney(o.stake), upDownMoney(o.fees),
       upDownNumber(o.target_price), upDownNumber(o.settlement_price), upDownNumber(o.exit_share_price, 3), upDownResult(o.result),
-      upDownMoney(o.pnl, true), upDownTime(o.settled_at), o.model || "—"]), "尚無平倉或結算紀錄") + footer;
+      upDownMoney(o.pnl, true), upDownTime(o.settled_at), o.model || "—"]), "尚無平倉或結算紀錄",
+    (index, label) => label === "已實現淨損益" && Number.isFinite(rows[index].pnl) ? signCls(rows[index].pnl) : "") + footer;
 }
 
 function upDownPageHTML(snapshot, unavailable = false) {

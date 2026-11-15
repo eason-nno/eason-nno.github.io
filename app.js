@@ -565,6 +565,30 @@ function volumeTreemap(items,width,height){
   split(rows,0,0,width,height);return result;
 }
 
+const COPY_PROFILE = "https://www.binance.com/zh-TC/copy-trading/lead-details/5075281354358777856";
+function copyTradeFeedHTML(feed) {
+  const rows = feed?.trades?.slice(0, 5) || [];
+  if (!rows.length) {
+    const message = feed?.state === "unavailable" ? "暫時無法讀取幣安交易紀錄"
+      : feed?.state === "ready" ? "近 7 天尚無公開成交" : "等待幣安交易紀錄";
+    return `<div class="empty-state"><b>${message}</b></div>`;
+  }
+  const stale = feed.state === "stale" ? '<p class="note">幣安連線暫時中斷，顯示上次取得的紀錄。</p>' : "";
+  return stale + `<div class="feed copy-feed">${rows.map(row => {
+    const buy = row.side === "BUY";
+    const action = row.position_side === "LONG" ? (buy ? "開多" : "平多")
+      : row.position_side === "SHORT" ? (buy ? "平空" : "開空") : (buy ? "買入" : "賣出");
+    const quantity = Number(row.quantity).toLocaleString("en-US", {maximumFractionDigits: 10});
+    const pnl = Number.isFinite(row.realized_pnl)
+      ? `・已實現 <span class="${signCls(row.realized_pnl)}">${row.realized_pnl > 0 ? "+" : ""}${fmtPrice(row.realized_pnl, 2)} ${esc(row.quote)}</span>` : "";
+    return `<div class="sig" data-sync-key="${esc(row.id)}"><div class="sig-b">
+      <div class="sig-t"><b>${esc(row.symbol)}</b><span class="${buy ? "up" : "down"}">${action}</span>
+        <time title="${esc(fmtClock(row.at))}（台北）">${fmtTime(row.at)}</time></div>
+      <div class="sig-d"><span class="num">${quantity}</span> ${esc(row.base)} @ <span class="num">${fmtPrice(row.price)}</span> ${esc(row.quote)}${pnl}</div>
+    </div></div>`;
+  }).join("")}</div>`;
+}
+
 async function pageOverview() {
   const view = location.hash;
   setTitle("市場總覽", "即時資料・Binance USDC 永續");
@@ -599,8 +623,9 @@ async function pageOverview() {
     <section class="card"><div class="card-h">
       <a class="btn sm" href="https://www.coinglass.com/zh-TW/hyperliquid-liquidation-map" target="_blank" rel="noopener noreferrer">CoinGlass 清算地圖 ↗</a>
     </div></section>
-    <section class="card ai-feed-card"><div class="card-h"><h2>${ICON.spark}AI 研究動態</h2><div class="right"><span class="chip-muted">排程 / 手動分析・台北時間</span></div></div>
-      <div id="feed-wrap"></div></section>
+    <section class="card copy-feed-card"><div class="card-h"><h2>${ICON.paper}熬鷹資本最新交易紀錄</h2><div class="right">
+      <a class="btn sm" href="${COPY_PROFILE}" target="_blank" rel="noopener noreferrer">幣安 ↗</a></div></div>
+      <div id="copy-feed-wrap">${copyTradeFeedHTML()}</div></section>
     <section class="card ov-heat"><div class="card-h"><h2>${ICON.grid}市場板塊</h2><div class="right"><span class="chip-muted">24h 成交額前 10・即時</span></div></div>
       <div class="heat" id="heat"></div><div id="heat-labels" class="heat-labels" aria-label="市場板塊幣種"></div></section>
     </div>
@@ -665,16 +690,10 @@ async function pageOverview() {
   const heatResize=new ResizeObserver(()=>{if(heatFrame===null)heatFrame=requestAnimationFrame(drawHeat)});heatResize.observe($("#heat"));
   pageCleanup.push(()=>{heatResize.disconnect();if(heatFrame!==null)cancelAnimationFrame(heatFrame)});
 
-  let aiRuns = (await aiState().catch(() => ({runs:[]}))).runs.slice(0,20);
-  if (view !== location.hash) return;
-  const aiLive = (d.ai_live?.messages || []).map((m) => ({ ...m, symbol: d.ai_live.symbol }));
-  const renderFeed = () => {
-    const liveMsgs = aiLive.slice(-30).reverse().map((m) => `<div class="sig"><div class="sig-ic ${m.key === "bull" ? "bull" : m.key === "bear" ? "bear" : ""}">${ICON[ROLE[m.key]?.icon || "chat"]}</div><div class="sig-b"><div class="sig-t"><b>${esc(baseOf(m.symbol || ""))}・${esc(ROLE[m.key]?.name || m.key)}</b><span class="tf-tag">分析中</span><time>${fmtTime(m.time)}</time></div><div class="sig-d">${esc(m.finding || (m.text || "").replace(/[*#|]/g, "").slice(0, 90))}</div></div></div>`).join("");
-    const runRows = aiRuns.map((r) => { const dd = DIRS[r.decision];
-      const head = r.status === "done" ? "最終決策 " + (dd ? dd.t : "") : r.status === "failed" ? "分析失敗" : "分析中";
-      const body = r.status === "done" ? `信心 ${r.confidence}・進場 ${fmtLv(r.entry)}・停損 ${fmtLv(r.stop)}・停利 ${fmtLv(r.take_profit)}${r.resumed ? `・補完成於 ${fmtTime(r.resumed.at)}` : ""}` : r.status === "failed" ? esc(friendlyErr(r.error)) : "AI 團隊分析進行中…";
-      return `<a class="sig" href="#/report/${encodeURIComponent(r.id)}"><div class="sig-ic ${r.decision === "LONG" ? "bull" : r.decision === "SHORT" ? "bear" : ""}">${r.status === "failed" ? ICON.info || ICON.crown : ICON.crown}</div><div class="sig-b"><div class="sig-t"><b class="${r.status === "failed" ? "down" : ""}">${esc(baseOf(r.symbol))}・${head}</b><span class="tf-tag">${esc(TRIG[r.trigger] || r.trigger || "")}</span><time>${fmtTime(r.created_at)}</time></div><div class="sig-d">${body}</div></div></a>`; }).join("");
-    $("#feed-wrap").innerHTML = (liveMsgs || runRows) ? `<div class="feed ai-feed">${liveMsgs}${runRows}</div>` : `<div class="empty-state" style="height:160px">${ICON.team}<b>尚未執行 AI 分析</b><small>AI 團隊依排程或手動觸發分析後，研究動態會出現在這裡。</small></div>`;
+  const copyFeed = $("#copy-feed-wrap");
+  const renderCopyTrades = async () => {
+    const status = await J("status.json");
+    if (copyFeed.isConnected) patchHTML(copyFeed, copyTradeFeedHTML(status.copy_trades));
   };
 
   const renderDiv = () => {
@@ -701,7 +720,11 @@ async function pageOverview() {
   const selectCoin = (sym) => { ovSel = sym; $$("#ov-rows tr.row").forEach((x) => x.classList.toggle("sel", x.dataset.s === sym)); renderDiv(); };
   $("#div-sel").onchange = (e) => selectCoin(e.target.value);
 
-  renderRows(); renderHeat(d.categories); renderFeed(); renderDiv();
+  renderRows(); renderHeat(d.categories); renderDiv();
+  onData(["status.json"], renderCopyTrades);
+  renderCopyTrades().catch(() => {
+    if (copyFeed.isConnected) patchHTML(copyFeed, copyTradeFeedHTML({state:"unavailable"}));
+  });
 
   on("ticker", (t) => {
     const cell = $(`[data-px="${t.symbol}"]`); if (!cell) return;
@@ -717,12 +740,11 @@ async function pageOverview() {
   { const iv = setInterval(() => renderRsi(), 30000); pageCleanup.push(() => clearInterval(iv)); } // K 線指標變化時更新多週期判斷
   on("signal", (s) => { renderRsi(); renderDiv(); const el = $("#kpi-sig"); if (el && MK.historyReady) el.textContent = +el.textContent + 1; });
   on("categories", renderHeat);
-  on("ai_message", (m) => { aiLive.push(m); renderFeed(); });
-  const refreshAI = async (active) => { const [runs, nd] = await Promise.all([api("/api/crypto/ai/runs?limit=20&recent=1").catch(() => aiRuns), api("/api/crypto/overview")]);
-    if (!active()) return; aiRuns = runs; aiLive.length = 0; nd.items.forEach((i) => { items[i.symbol] = i; const o = d.items.findIndex((x) => x.symbol === i.symbol); if (o >= 0) d.items[o] = i; }); $("#kpi-sig").textContent = MK.historyReady ? nd.kpi.signals_24h : "—"; renderRows(); renderDiv(); renderFeed(); };
-  onData(["status.json", "recent.json", "runs.json", "market.json"], refreshAI);
+  const refreshOverview = async (active) => { const nd = await api("/api/crypto/overview");
+    if (!active()) return; nd.items.forEach((i) => { items[i.symbol] = i; const o = d.items.findIndex((x) => x.symbol === i.symbol); if (o >= 0) d.items[o] = i; }); $("#kpi-sig").textContent = MK.historyReady ? nd.kpi.signals_24h : "—"; renderRows(); renderDiv(); };
+  onData(["status.json", "recent.json", "runs.json", "market.json"], refreshOverview);
   const overview = $("#ov-rows");
-  MK.warmHistory().then(() => refreshAI(() => overview.isConnected)).catch(() => {});
+  MK.warmHistory().then(() => refreshOverview(() => overview.isConnected)).catch(() => {});
   const iv = setInterval(async () => { // 每分鐘重算技術狀態
     try { const nd = await api("/api/crypto/overview"); nd.items.forEach((i) => { items[i.symbol] = i; const o = d.items.findIndex((x) => x.symbol === i.symbol); if (o >= 0) d.items[o] = i; }); renderRows(); renderDiv(); } catch (e) { /* ignore */ }
   }, 60000);
