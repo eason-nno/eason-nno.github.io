@@ -66,6 +66,7 @@ function strategyLessonsHTML(rules) {
 function strategyReportBody(report) {
   const decision = report.decision || {};
   const fields = [
+    ...tradeMarketAnalysisFields(report.market_analysis),
     ["本次評估", decision.reason], ["執行結果", report.reason], ["風險評估", decision.risk_plan],
     ["反證", decision.counter_evidence], ["前次調整", decision.review_adjustment],
     ["下次檢查", decision.next_review_trigger],

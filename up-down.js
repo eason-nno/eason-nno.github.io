@@ -118,6 +118,7 @@ function upDownPeriodHTML(minutes, data = {}) {
     <div class="up-down-subsection"><h3>最新決策</h3>
       ${Object.hasOwn(UP_DOWN_EVALUATION, evaluation) ? `<p class="dim">${esc(UP_DOWN_EVALUATION[evaluation])}</p>` : ""}
       ${decision ? `<dl class="up-down-metrics">${upDownFields([
+        ...tradeMarketAnalysisFields(decision.market_analysis),
         ["動作", upDownAction(decision.action)], ["方向", directions], ["模型", decision.model || "—"],
         ["評估時間", upDownTime(decision.at)], [directions === "—" ? "模型收漲機率" : "模型方向機率", probability],
         ["評估合約", decision.market_id || "—"],

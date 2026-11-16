@@ -1,5 +1,10 @@
 /* 模擬帳戶共用唯讀交易區。只使用已保存的委託／成交，不產生交易資料。 */
 const TRADE_TABS = [["pos", "倉位"], ["ord", "當前委託"], ["orders", "歷史委託"], ["fills", "歷史成交"], ["hist", "倉位歷史"], ["funding", "資金費紀錄"]];
+function tradeMarketAnalysisFields(analysis) {
+  return [["市場情緒", analysis?.sentiment], ["多頭分析", analysis?.bullish], ["空頭分析", analysis?.bearish]]
+    .filter(([, value]) => typeof value === "string" && value.trim());
+}
+
 function tradeAccountBanner(name, account, now = Date.now()) {
   const valid = ms => Number.isFinite(ms) && ms > 0 && ms <= now;
   let first = valid(account.started_ms) ? account.started_ms : Infinity;
