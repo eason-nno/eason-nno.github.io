@@ -1825,17 +1825,17 @@ function setTitle(t, chip) { document.title = "easonAgents"; $("#app").setAttrib
 function pageTeamOrganization() {
   setTitle("AI 團隊");
   const rows = [
+    ["managers", [
+      ["test-manager", "依持倉與費後成本評估測試1、2、3號", "策略測試經理"],
+      ["up-down-manager", "依盤口與同源現價評估 5 分、15 分、1 小時", "漲跌合約經理"],
+      ["pm", "排程報告・最終決定方向、部位與風險"],
+    ]],
+    ["risk", [["aggressive", "衡量機會與風險"], ["conservative", "控制曝險與回撤"], ["neutral", "核對兩方證據"]]],
+    ["plan", [["manager", "整合論據與裁決"], ["trader", "擬定進場與保護"]]],
+    ["debate", [["bull", "整理多方論據"], ["bear", "整理空方論據與反證"]]],
     ["analysts", [
       ["market", "BTC 多週期與關鍵位"], ["sentiment", "市場情緒與槓桿擁擠"],
       ["news", "新聞與事件背景"], ["onchain", "持倉、資金費與清算"],
-    ]],
-    ["debate", [["bull", "整理多方論據"], ["bear", "整理空方論據與反證"]]],
-    ["plan", [["manager", "整合論據與裁決"], ["trader", "擬定進場與保護"]]],
-    ["risk", [["aggressive", "衡量機會與風險"], ["conservative", "控制曝險與回撤"], ["neutral", "核對兩方證據"]]],
-    ["managers", [
-      ["test-manager", "依持倉與費後成本評估測試1、2、3號", "策略測試經理"],
-      ["pm", "排程報告・最終決定方向、部位與風險"],
-      ["up-down-manager", "依盤口與同源現價評估 5 分、15 分、1 小時", "漲跌合約經理"],
     ]],
   ];
   $("#app").innerHTML = `<div class="team-org-page"><h1 id="team-org-title">AI 團隊</h1>
@@ -1843,12 +1843,33 @@ function pageTeamOrganization() {
       <svg class="team-org-links" aria-hidden="true"></svg>
       ${rows.map(([stage, roles]) => `<div class="team-org-row ${stage}">
         ${roles.map(([key, desc, name]) => `<article class="team-org-role" data-role="${key}">
-          <h2>${esc(name || ROLE[key].name)}</h2><p>${esc(desc)}</p>
+          <h2><span class="team-org-name">${esc(name || ROLE[key].name)}</span>
+            <span class="team-org-timing" data-org-time>讀取中…</span></h2><p>${esc(desc)}</p>
         </article>`).join("")}
       </div>`).join("")}
     </section></div>`;
   const board = $(".team-org");
   const svg = $(".team-org-links", board);
+  const seconds = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 });
+  const refreshTiming = async (active = () => board.isConnected) => {
+    const status = await J("status.json").catch(() => null);
+    if (!active()) return;
+    for (const card of board.querySelectorAll("[data-role]")) {
+      const timing = status?.role_activity?.[card.dataset.role];
+      const date = new Date(timing?.at || NaN);
+      const label = $("[data-org-time]", card);
+      if (!Number.isFinite(date.getTime())) {
+        label.textContent = status ? "尚無執行紀錄" : "暫無時間資料";
+        label.removeAttribute("title");
+        continue;
+      }
+      const duration = Number.isFinite(timing.elapsed_s) && timing.elapsed_s >= 0
+        ? seconds.format(timing.elapsed_s) + " 秒" : "耗時未記錄";
+      label.title = timing.source === "request" ? "台北時間・最近一次模型請求" : "台北時間・最近一次角色執行紀錄";
+      label.innerHTML = `<time datetime="${esc(date.toISOString())}">${esc(fmtClock(date).slice(5))}</time><span class="team-org-elapsed">（${esc(duration)}）</span>`;
+    }
+    draw();
+  };
   const draw = () => {
     const frame = svg.getBoundingClientRect();
     const points = Object.fromEntries([...board.querySelectorAll("[data-role]")].map(card => {
@@ -1860,15 +1881,16 @@ function pageTeamOrganization() {
     const line = (d, tone, arrow = false) => `<path class="${tone}" d="${d}"${arrow ? ` marker-end="url(#team-org-${tone})"` : ""}/>`;
     const join = (from, to) => {
       const heads = from.map(key => points[key]), tails = to.map(key => points[key]);
-      const y = (Math.max(...heads.map(p => p.bottom)) + Math.min(...tails.map(p => p.top))) / 2;
+      const y = (Math.min(...heads.map(p => p.top)) + Math.max(...tails.map(p => p.bottom))) / 2;
       const xs = [...heads, ...tails].map(p => p.x);
       return line(`M${Math.min(...xs)} ${y}H${Math.max(...xs)}`, "research")
-        + heads.map(p => line(`M${p.x} ${p.bottom}V${y}`, "research")).join("")
-        + tails.map(p => line(`M${p.x} ${y}V${p.top}`, "research", true)).join("");
+        + heads.map(p => line(`M${p.x} ${p.top}V${y}`, "research")).join("")
+        + tails.map(p => line(`M${p.x} ${y}V${p.bottom}`, "research", true)).join("");
     };
     const { market, manager, trader, "test-manager": test, "up-down-manager": upDown } = points;
-    const branchX = Math.min(market.left, test.left) / 2;
-    const turnY = (Math.max(test.bottom, upDown.bottom, points.pm.bottom) + frame.height) / 2;
+    const branchX = market.left / 2;
+    // The technical branch crosses to the left-side managers above the risk team's connector.
+    const turnY = points.pm.bottom + (points.aggressive.top - points.pm.bottom) / 3;
     svg.innerHTML = `<defs>${["research", "technical"].map(tone => `<marker id="team-org-${tone}"
       viewBox="0 0 8 8" refX="8" refY="4" markerWidth="6" markerHeight="6" orient="auto">
       <path d="M0 0 8 4 0 8Z" class="arrow ${tone}"/></marker>`).join("")}</defs>`
@@ -1877,13 +1899,15 @@ function pageTeamOrganization() {
       + line(`M${manager.right} ${manager.y}H${trader.left}`, "research", true)
       + join(["trader"], ["aggressive", "conservative", "neutral"])
       + join(["aggressive", "conservative", "neutral"], ["pm"])
-      + line(`M${market.left} ${market.y}H${branchX}V${test.y}H${test.left}`, "technical", true)
-      + line(`M${branchX} ${test.y}V${turnY}H${upDown.x}V${upDown.bottom}`, "technical", true);
+      + line(`M${market.left} ${market.y}H${branchX}V${turnY}H${upDown.x}V${upDown.bottom}`, "technical", true)
+      + line(`M${test.x} ${turnY}V${test.bottom}`, "technical", true);
   };
   draw();
   const resize = new ResizeObserver(draw);
   resize.observe(board);
   pageCleanup.push(() => resize.disconnect());
+  onData(["status.json"], refreshTiming);
+  void refreshTiming();
 }
 async function route() {
   pageCleanup.forEach((f) => { try { f(); } catch (e) {} }); pageCleanup = []; if(!$("#sheet")?.classList.contains("debate-wrap") || $("#sheet").dataset.route!==location.hash) closeSheet();
