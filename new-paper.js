@@ -48,11 +48,15 @@ function strategyBranchHTML(P, details = strategyManagerHTML(P)) {
 function strategyAdviceHTML(advice) {
   if (!advice) return "";
   const state = {waiting_training: "等待首次模型訓練", waiting_market: "等待完整已收線行情", paused: "模型建議暫停觀察"};
-  if (advice.state !== "ready") return `<p class="note">LightGBM・${state[advice.state] || "尚無建議"}</p>`;
+  const held = advice.exit_model;
+  const exitText = held?.state === "qualified"
+    ? `<p class="note">LightGBM 持倉模型・續抱費後變化 ${fmtPrice(held.hold_increment_usdc, 4)} USDC・不利波幅 ${fmtPrice(held.hold_adverse_usdc, 4)} USDC</p>`
+    : held?.state === "awaiting_validation" ? '<p class="note">LightGBM 持倉模型・等待驗證</p>' : "";
+  if (advice.state !== "ready") return `<p class="note">LightGBM・${state[advice.state] || "尚無建議"}</p>${exitText}`;
   const actions = Object.entries(advice.net_return_pct || {}).map(([action, score]) =>
     `${esc(NEW_ACTIONS[action] || action)} ${fmtPct(score)}`).join("・");
   return `<p class="note">LightGBM 30 分鐘建議・${esc(NEW_ACTIONS[advice.action] || "無可比較動作")}
-    ${actions ? `<br>估計名目淨報酬 ${actions}` : ""}</p>`;
+    ${actions ? `<br>估計名目淨報酬 ${actions}` : ""}</p>${exitText}`;
 }
 
 function strategyLessonsHTML(rules) {
@@ -67,6 +71,8 @@ function strategyReportBody(report) {
   const decision = report.decision || {};
   const exit = decision.reviewed_market_exit;
   const review = decision.exit_review;
+  const entry = decision.trade_plan;
+  const held = decision.plan_check;
   const closing = decision.action === "REDUCE" || decision.action === "CLOSE";
   const fields = [
     ...tradeMarketAnalysisFields(report.market_analysis),
@@ -74,6 +80,9 @@ function strategyReportBody(report) {
     ["整輪費後估計（USDC）", Number.isFinite(exit?.cycle_net_usdc) ? fmtPrice(exit.cycle_net_usdc, 4) : null],
     ["整輪回本價", Number.isFinite(exit?.break_even_price) ? fmtPrice(exit.break_even_price) : null],
     ["續抱評估", review?.hold_outlook], ["限價出場評估", review?.limit_plan],
+    ["進場計畫", entry ? `${entry.confirmation_frame}・區間 ${fmtPrice(entry.zone_low)}–${fmtPrice(entry.zone_high)}・緩衝 ${fmtPrice(entry.break_buffer)}・目標 ${fmtPrice(entry.target_price)}` : null],
+    ["原計畫失效檢查", held ? `${held.frame}・失效線 ${fmtPrice(held.threshold)}・${{confirmed: "已確認破位", within_plan: "原週期尚未失效", waiting_close: "等待完整收線"}[held.state] || "待核對"}` : null],
+    ["模型調整", decision.model_adjustment],
     ["風險要求立即出場", review ? `${review.risk_exit_required ? "是" : "否"}・${review.risk_reason}` : null],
     ["本次評估", decision.reason], ["執行結果", report.reason], ["風險評估", decision.risk_plan],
     ["反證", decision.counter_evidence], ["前次調整", decision.review_adjustment],
