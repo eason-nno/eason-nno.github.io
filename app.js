@@ -1881,14 +1881,26 @@ function pageTeamOrganization() {
     const line = (d, tone, arrow = false) => `<path class="${tone}" d="${d}"${arrow ? ` marker-end="url(#team-org-${tone})"` : ""}/>`;
     const join = (from, to) => {
       const heads = from.map(key => points[key]), tails = to.map(key => points[key]);
-      const y = (Math.min(...heads.map(p => p.top)) + Math.max(...tails.map(p => p.bottom))) / 2;
-      const xs = [...heads, ...tails].map(p => p.x);
+      const top = Math.min(...heads.map(p => p.top));
+      const y = (top + Math.max(...tails.map(p => p.bottom))) / 2;
+      const upper = heads.filter(p => p.top === top);
+      const lower = heads.filter(p => p.top > top);
+      const xs = [...upper, ...tails].map(p => p.x);
+      let stems = upper.map(p => line(`M${p.x} ${p.top}V${y}`, "research")).join("");
+      if (lower.length) {
+        // The mobile analyst rows leave the center column free for the lower row's links.
+        const middle = frame.width / 2;
+        const gap = (upper[0].bottom + lower[0].top) / 2;
+        xs.push(middle);
+        stems += lower.map(p => line(`M${p.x} ${p.top}V${gap}H${middle}`, "research")).join("")
+          + line(`M${middle} ${gap}V${y}`, "research");
+      }
       return line(`M${Math.min(...xs)} ${y}H${Math.max(...xs)}`, "research")
-        + heads.map(p => line(`M${p.x} ${p.top}V${y}`, "research")).join("")
+        + stems
         + tails.map(p => line(`M${p.x} ${y}V${p.bottom}`, "research", true)).join("");
     };
     const { market, manager, trader, "test-manager": test, "up-down-manager": upDown } = points;
-    const branchX = market.left / 2;
+    const branchX = Math.min(market.left, test.left) / 2;
     // The technical branch crosses to the left-side managers above the risk team's connector.
     const turnY = points.pm.bottom + (points.aggressive.top - points.pm.bottom) / 3;
     svg.innerHTML = `<defs>${["research", "technical"].map(tone => `<marker id="team-org-${tone}"
