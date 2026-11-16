@@ -472,19 +472,26 @@ function toast(msg, cls = "") {
 /* shared UI */
 let WATCH = ["BTCUSDC", "ETHUSDC", "ZECUSDC"];
 let lastCoin = coinKey(localStorage.getItem("lastCoin") || "BTCUSDC");
+const RESEARCH_PROGRESS = "#/reports/progress";
 function renderNav(active) {
-  const items = [["home", "#/", "總覽", ICON.home], ["coin", `#/coin/${lastCoin}`, "幣種研究", ICON.coin], ["team", "#/team", "AI 團隊", ICON.team],
+  const items = [["home", "#/", "總覽", ICON.home], ["coin", `#/coin/${lastCoin}`, "幣種研究", ICON.coin],
     ["paper", "#/paper", "模擬交易", ICON.paper], ["reports", "#/reports", "研究報告", ICON.report],
     ["training", "#/training", "訓練結果", ICON.bars]];
-  $("#nav").innerHTML = items.map(([k, h, t, ic]) => k === "paper" ?
-    `<details class="nav-dropdown ${active === k ? "active" : ""}"><summary>${ic}<span>${t}</span><span class="chevron">▾</span></summary><div class="nav-menu"><a href="#/paper" ${location.hash === "#/paper" ? 'aria-current="page"' : ""}>AI 團隊策略</a>${Object.entries(STRATEGY_ACCOUNTS).map(([id,name]) => {
-      const route = strategyRoute(id);
-      return `<a href="${route}" ${location.hash.split("?")[0] === route ? 'aria-current="page"' : ""}>${name}</a>`;
-    }).join("")}<a href="${UP_DOWN_ROUTE}" ${location.hash.split("?")[0] === UP_DOWN_ROUTE ? 'aria-current="page"' : ""}>漲跌合約</a></div></details>` :
+  const route = location.hash.split("?")[0];
+  const current = route === "#/team" ? RESEARCH_PROGRESS : route;
+  const menus = {
+    paper: [["#/paper", "AI 團隊策略"], ...Object.entries(STRATEGY_ACCOUNTS).map(([id, name]) => [strategyRoute(id), name]),
+            [UP_DOWN_ROUTE, "漲跌合約"]],
+    reports: [["#/reports", "AI 研究報告"], [RESEARCH_PROGRESS, "AI 研究進度"]],
+  };
+  $("#nav").innerHTML = items.map(([k, h, t, ic]) => menus[k] ?
+    `<details class="nav-dropdown ${active === k ? "active" : ""}"><summary>${ic}<span>${t}</span><span class="chevron">▾</span></summary><div class="nav-menu">${menus[k].map(([href, label]) =>
+      `<a href="${href}" ${current === href ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</div></details>` :
     `<a href="${h}" class="${k === active ? "active" : ""}" ${k === active ? 'aria-current="page"' : ""}>${ic}<span>${t}</span></a>`).join("") +
     `<a href="#/settings" class="${active === "settings" ? "active" : ""}">${ICON.gear}<span>設定</span></a>`;
-  const dd = $(".nav-dropdown");
-  dd.addEventListener("keydown", e => { if (e.key === "Escape") { dd.open = false; $("summary", dd).focus(); } });
+  document.querySelectorAll("#nav .nav-dropdown").forEach(dd => {
+    dd.addEventListener("keydown", e => { if (e.key === "Escape") { dd.open = false; $("summary", dd).focus(); } });
+  });
 }
 function sparkSVG(vals, w = 130, h = 36) {
   if (!vals || vals.length < 2) return `<svg width="${w}" height="${h}"></svg>`;
@@ -1017,7 +1024,7 @@ function teamReportDuration(run) {
   return "耗時未記錄";
 }
 function teamReportHref(run) {
-  return "#/team?" + new URLSearchParams({ symbol: run.symbol, report: run.id });
+  return RESEARCH_PROGRESS + "?" + new URLSearchParams({ symbol: run.symbol, report: run.id });
 }
 const teamIncomplete = (run) => run?.status === "failed" || run?.status === "stopped";
 function teamSelectableReports(rows) {
@@ -1049,8 +1056,8 @@ function teamDayChoices(reports, day, selectedId) {
 
 async function pageTeam(params) {
   const view = location.hash;
-  setTitle("AI 團隊研究室", "12 位研究角色・2 位策略經理");
-  let [ov, lv, aset, newPaper] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/ai/live"), api("/api/crypto/ai/settings"), J("new-paper.json").catch(() => null)]);
+  setTitle("AI 研究進度", "12 位研究角色");
+  const [ov, lv, aset] = await Promise.all([api("/api/crypto/overview"), api("/api/crypto/ai/live"), api("/api/crypto/ai/settings")]);
   WATCH = ov.items.map((i) => i.symbol);
   let sym = coinKey(params.get("symbol") || (lv.busy ? lv.current.symbol : lastCoin));
   if (!WATCH.includes(sym)) sym = WATCH[0];
@@ -1097,10 +1104,6 @@ async function pageTeam(params) {
   };
   const card = (r) => `<div class="agent" id="ag-${r.key}" tabindex="0" role="button" aria-label="${esc(r.name)}：查看完整報告"><div class="ah"><span class="ai">${ICON[r.icon]}</span><span class="an">${esc(r.name)}</span></div><p>${esc(r.desc)}</p><div class="find" data-f hidden></div><div class="prev" data-p hidden></div><button class="more" data-more hidden>展開全文 ▾</button><div class="af"><span class="pill gray" data-st>等待中</span><span class="tier">${r.tier === "deep" ? "深度思考" : "快速思考"}</span><span class="mchip" data-m></span></div><button type="button" class="more" data-debate="${r.key}">與他辯論</button></div>`;
   const col = (n) => ROLES.filter((r) => r.col === n).map(card).join("");
-  const strategyDetails = () => selectedReport
-    ? `<p>${esc(run?.result?.new_strategy?.state || "這份報告未記錄策略評估狀態。")}</p>`
-    : strategyManagerHTML(newPaper);
-  const strategyDebate = '<button type="button" class="more" data-debate="strategy">與他辯論</button>';
   $("#app").innerHTML = `
   ${noteHTML()}
   <div style="display:flex;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
@@ -1113,8 +1116,7 @@ async function pageTeam(params) {
   </div>
   <section class="card cons-bar"><div class="cons-h"><h2>${ICON.target}${selectedReport ? "報告共識" : "目前共識"}</h2><span id="cons-st"></span></div><div id="cons" class="cons-body"></div></section>
   <section class="card" style="margin-top:16px;padding:0"><div class="graph" id="graph"><svg class="links" id="links"></svg>
-    <div class="gcol">${col(0)}</div><div class="gcol">${col(1)}</div><div class="gcol">${col(2)}</div><div class="gcol">${col(3)}</div><div class="gcol">${col(4)}</div>${strategyBranchHTML(newPaper, strategyDetails())}${upDownBranchHTML()}</div></section>
-  <p class="note" style="margin:8px 2px 0">團隊共 14 位成員。每份研究由上方 12 位角色執行，兩位策略經理依各自排程評估。</p>
+    <div class="gcol">${col(0)}</div><div class="gcol">${col(1)}</div><div class="gcol">${col(2)}</div><div class="gcol">${col(3)}</div><div class="gcol">${col(4)}</div></div></section>
   <section class="card" style="margin-top:12px;padding:0"><div class="stepper" id="stepper"></div></section>
   <section class="card" style="margin-top:12px"><div class="prog">
     <svg class="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" stroke="#333b47" stroke-width="5"/><circle id="ring" cx="22" cy="22" r="18" stroke="#0ecb81" stroke-width="5" stroke-dasharray="0 113" transform="rotate(-90 22 22)"/></svg>
@@ -1124,21 +1126,16 @@ async function pageTeam(params) {
     <span style="border-left:1px solid var(--line2);height:34px"></span>
     <b>${baseOf(sym)}</b><span class="num" id="tp-px" style="font-size:17px;font-weight:700">—</span><span class="num" id="tp-chg"></span><span id="tp-spark"></span>
   </div></section>`;
-  // Keep the branch inside #graph, while original progress remains exactly 12 roles.
   const stepCard = $("#stepper").closest("section"), progressCard = $(".prog").closest("section");
   $("#app").prepend(stepCard, progressCard);
-  const strategyCard = $("#ag-new-strategy");
-  strategyCard.insertAdjacentHTML("beforeend", strategyDebate);
   document.querySelectorAll("[data-debate]").forEach(el=>{ el.onclick=e=>{e.stopPropagation();showRoleDebate(el.dataset.debate,run?.id)}; el.onkeydown=e=>e.stopPropagation(); });
-  strategyCard.onclick = () => showSheet("策略測試經理", strategyDetails());
-  strategyCard.onkeydown = e => { if(e.key === "Enter" || e.key === " ") { e.preventDefault(); strategyCard.click(); } };
-  $("#team-sym").onchange = (e) => { location.hash = `#/team?symbol=${e.target.value}`; };
+  $("#team-sym").onchange = (e) => { location.hash = `${RESEARCH_PROGRESS}?symbol=${e.target.value}`; };
   const daySelect = $("#team-day"), reportSelect = $("#team-report");
   function selectReport(day, id) {
     const query = new URLSearchParams({ symbol: sym });
     if (day) query.set("date", day);
     if (id) query.set("report", id);
-    location.hash = "#/team?" + query;
+    location.hash = RESEARCH_PROGRESS + "?" + query;
   }
   daySelect.onchange = () => selectReport(daySelect.value, "");
   reportSelect.onchange = () => selectReport(daySelect.value, reportSelect.value);
@@ -1204,28 +1201,11 @@ async function pageTeam(params) {
   };
   $("#graph").addEventListener("click", (e) => { const a = e.target.closest(".gcol .agent"); if (a) openRole(a.id.slice(3)); });
   $("#graph").addEventListener("keydown", (e) => { const a = e.target.closest(".gcol .agent"); if (a && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openRole(a.id.slice(3)); } });
-  const upDownStatus = $("#up-down-team-status");
-  const refreshUpDown = async () => {
-    const snapshot = await J(UP_DOWN_FILE).catch(() => null);
-    if (snapshot && upDownStatus.isConnected) patchHTML(upDownStatus, upDownManagerHTML(snapshot));
-  };
-  onData([UP_DOWN_FILE], refreshUpDown);
-  void refreshUpDown();
-  onData(["status.json", "runs.json", "settings.json", "new-paper.json"], async (active) => {
-    const [settings, latestPaper] = await Promise.all([
-      api("/api/crypto/ai/settings"), J("new-paper.json").catch(() => newPaper),
-    ]);
+  onData(["status.json", "runs.json", "settings.json"], async (active) => {
+    const settings = await api("/api/crypto/ai/settings");
     await loadState(active);
     if (!active()) return;
     A = settings.settings;
-    if (!selectedReport && latestPaper !== newPaper) {
-      newPaper = latestPaper;
-      const temp = document.createElement("template"); temp.innerHTML = strategyBranchHTML(newPaper);
-      const next = $("#ag-new-strategy", temp.content);
-      if (next) patchHTML(strategyCard, next.innerHTML + strategyDebate);
-      const debate = $("[data-debate]", strategyCard);
-      if (debate) { debate.onclick = e => { e.stopPropagation(); showRoleDebate("strategy", run?.id); }; debate.onkeydown = e => e.stopPropagation(); }
-    }
     render();
   });
 
@@ -1433,7 +1413,7 @@ async function catalogPage(scope, requested, legacy, pageSize = REPORT_PAGE_SIZE
   return {...range, rows: (await Promise.all(requests)).flat()};
 }
 async function pageReports(params) {
-  setTitle("研究報告", "AI 團隊・繁體中文");
+  setTitle("AI 研究報告", "AI 團隊・繁體中文");
   const requestedPage = Number(params.get("page"));
   const load = () => Promise.all([
     catalogPage("research", requestedPage, () => api("/api/crypto/ai/runs?limit=300")),
@@ -1843,7 +1823,9 @@ function setTitle(t, chip) { document.title = "easonAgents"; $("#app").setAttrib
 async function route() {
   pageCleanup.forEach((f) => { try { f(); } catch (e) {} }); pageCleanup = []; if(!$("#sheet")?.classList.contains("debate-wrap") || $("#sheet").dataset.route!==location.hash) closeSheet();
   const h = location.hash || "#/";
-  const [path, qs] = h.slice(1).split("?");
+  const [requested, qs] = h.slice(1).split("?");
+  const progressPath = RESEARCH_PROGRESS.slice(1);
+  const path = requested === "/team" ? progressPath : requested;
   const params = new URLSearchParams(qs || "");
   const app = $("#app");
   app.innerHTML = `<div class="loading">載入中…</div>`;
@@ -1851,12 +1833,12 @@ async function route() {
   try {
     let m;
     if (path !== UP_DOWN_ROUTE.slice(1) &&
-        (/^\/(coin\/|paper(?:\/|$)|team$)/.test(path) || path === "/" || path === "")) MK.start();
+        (/^\/(coin\/|paper(?:\/|$))/.test(path) || path === progressPath || path === "/" || path === "")) MK.start();
     if (/^\/(coin\/|paper(?:\/|$))/.test(path)) await loadChartLibrary();
     if (h !== (location.hash || "#/")) return;
     if (path === "/" || path === "") { renderNav("home"); await pageOverview(); }
     else if ((m = path.match(/^\/coin\/([A-Za-z0-9]+)/))) { renderNav("coin"); await pageCoin(m[1], params); }
-    else if (path === "/team") { renderNav("team"); await pageTeam(params); }
+    else if (path === progressPath) { renderNav("reports"); await pageTeam(params); }
     else if (path === "/paper") { renderNav("paper"); await pagePaper(); }
     else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper("test1", params); }
     else if (path === "/paper/test2") { renderNav("paper"); await pageNewPaper("test2", params); }
@@ -1872,7 +1854,9 @@ async function route() {
     app.innerHTML = `<div class="card"><div class="empty-state"><b>載入失敗</b><small>${esc(e.message)}</small></div></div>`;
   }
 }
-document.addEventListener("click", e => { const dd = $(".nav-dropdown"); if (dd && !dd.contains(e.target)) dd.open = false; });
+document.addEventListener("click", e => {
+  document.querySelectorAll("#nav .nav-dropdown[open]").forEach(dd => { if (!dd.contains(e.target)) dd.open = false; });
+});
 window.addEventListener("hashchange", route);
 setInterval(tickElapsed, 1000);
 connectLive();
