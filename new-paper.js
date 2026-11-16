@@ -65,8 +65,16 @@ function strategyLessonsHTML(rules) {
 
 function strategyReportBody(report) {
   const decision = report.decision || {};
+  const exit = decision.reviewed_market_exit;
+  const review = decision.exit_review;
+  const closing = decision.action === "REDUCE" || decision.action === "CLOSE";
   const fields = [
     ...tradeMarketAnalysisFields(report.market_analysis),
+    ["現價全平估計（USDC）", Number.isFinite(exit?.net_usdc) ? fmtPrice(exit.net_usdc, 4) : null],
+    ["整輪費後估計（USDC）", Number.isFinite(exit?.cycle_net_usdc) ? fmtPrice(exit.cycle_net_usdc, 4) : null],
+    ["整輪回本價", Number.isFinite(exit?.break_even_price) ? fmtPrice(exit.break_even_price) : null],
+    ["續抱評估", review?.hold_outlook], ["限價出場評估", review?.limit_plan],
+    ["風險要求立即出場", review ? `${review.risk_exit_required ? "是" : "否"}・${review.risk_reason}` : null],
     ["本次評估", decision.reason], ["執行結果", report.reason], ["風險評估", decision.risk_plan],
     ["反證", decision.counter_evidence], ["前次調整", decision.review_adjustment],
     ["下次檢查", decision.next_review_trigger],
@@ -74,9 +82,11 @@ function strategyReportBody(report) {
   const plan = [
     ["AI 提案", NEW_ACTIONS[decision.action] || decision.action],
     ["委託方式", {MARKET: "市價", LIMIT: "限價"}[decision.order_type]],
-    ["進場價", decision.entry_price], ["投入保證金（USDC）", decision.requested_margin_usdc],
+    [closing ? "出場委託價" : "進場價", decision.entry_price], ["投入保證金（USDC）", decision.requested_margin_usdc],
     ["槓桿", decision.leverage == null ? null : formatLeverage(decision.leverage)],
-    ["委託有效秒數", decision.valid_for_seconds], ["停利價", decision.take_profit_price],
+    ["決策有效秒數", decision.valid_for_seconds],
+    ["限價出場截止", decision.exit_limit_expires_ms ? fmtTime(decision.exit_limit_expires_ms + 1) : null],
+    ["停利價", decision.take_profit_price],
     ["獲利啟動（USDC）", decision.profit_activation_usdc], ["獲利回吐（USDC）", decision.profit_giveback_usdc],
     ["擬減倉數量", decision.close_lots?.length ? decision.close_lots.reduce((sum, lot) => sum + Number(lot.qty || 0), 0) : null],
   ].filter(([, value]) => value != null);
