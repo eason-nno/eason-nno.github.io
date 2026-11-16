@@ -146,11 +146,11 @@ function upDownTrades(snapshot, tab, pages) {
   if (tab === "funding") return '<div class="empty-state"><b>漲跌合約無資金費</b></div>';
   const saved = snapshot.fills || [];
   const savedSales = new Set(saved.filter(row => row.action === "SELL").map(row => `${row.market_id}:${row.at}`));
-  const fills = [...saved, ...history.filter(row => row.result === "SELL" && !savedSales.has(`${row.market_id}:${row.settled_at}`))
+  const fills = [...saved, ...history.slice(0, 30).filter(row => row.result === "SELL" && !savedSales.has(`${row.market_id}:${row.settled_at}`))
     .map(row => ({...row, action: "SELL", at: row.settled_at, price: row.exit_share_price}))]
     .sort((a, b) => b.at - a.at);
   const { rows, footer } = tradePage({ pos: positions, ord: orders, hist: history, orders: snapshot.order_history || [],
-    fills }[tab] || [], pages, tab);
+    fills }[tab] || [], pages, tab, tab === "hist" ? 20 : 5);
   if (tab === "pos") return tradeTable(["合約", "方向", "投入", "份數", "成交價", "手續費", "結算比較價", "到期時間（台北）", "模型"],
     rows.map(o => [name(o), upDownDirection(o.direction), upDownMoney(o.stake), upDownNumber(o.shares, 4),
       upDownNumber(o.entry_price, 3), upDownMoney(o.fees), upDownNumber(o.target_price), upDownTime(o.expires_at), o.model || "—"]),
@@ -181,6 +181,7 @@ function upDownPageHTML(snapshot, unavailable = false) {
   const noPositions = !(snapshot.positions || []).length;
   const equity = snapshot.equity ?? (noPositions && Number.isFinite(snapshot.initial_balance) && Number.isFinite(snapshot.realized_pnl)
     ? snapshot.initial_balance + snapshot.realized_pnl : null);
+  const winRate = value => Number.isFinite(value) ? upDownNumber(value) + "%" : "—";
   return tradeDashboard("漲跌合約", snapshot, {
     open: (snapshot.positions || []).length, pending: (snapshot.orders || []).length,
     metrics: `
@@ -188,8 +189,10 @@ function upDownPageHTML(snapshot, unavailable = false) {
         <small>可用資金 ${upDownMoney(snapshot.balance)}・委託預留 ${upDownMoney(snapshot.reserved)}</small></div>
       <div class="card kcard"><small>已入帳淨損益</small><div class="row"><span class="big num ${signCls(snapshot.realized_pnl)}">${upDownNumber(snapshot.realized_pnl)}</span></div>
         <small>手續費 ${upDownMoney(snapshot.fees_paid)}</small></div>
-      <div class="card kcard"><small>勝率</small><div class="row"><span class="big num">${Number.isFinite(snapshot.win_rate) ? upDownNumber(snapshot.win_rate) + "%" : "—"}</span></div>
-        <small>${Number.isFinite(snapshot.trades) ? `${snapshot.wins} 勝／${snapshot.trades} 筆已平倉` : "尚無統計"}</small></div>
+      <div class="card kcard"><small>總勝率</small><div class="row"><span class="big num">${winRate(snapshot.win_rate)}</span></div>
+        <small>${Number.isFinite(snapshot.trades) ? `${snapshot.wins} 勝／${snapshot.trades} 筆已平倉` : "尚無統計"}</small>
+        <dl class="up-down-win-rates">${Array.from(UP_DOWN_PERIODS, ([minutes, label]) =>
+          `<div><dt>${label}勝率</dt><dd class="num">${winRate(snapshot.win_rates_by_period?.[minutes])}</dd></div>`).join("")}</dl></div>
       <div class="card kcard"><small>最大回撤（已實現權益）</small><div class="row"><span class="big num ${snapshot.max_drawdown_pct > 0 ? "down" : ""}">${Number.isFinite(snapshot.max_drawdown_pct)
         ? upDownNumber(snapshot.max_drawdown_pct) + "%" : "—"}</span></div><small>含成交手續費</small></div>`,
     equity: tradeEquityHTML("up-down-curve", "已入帳權益・含手續費"),

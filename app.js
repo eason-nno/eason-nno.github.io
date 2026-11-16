@@ -1494,26 +1494,42 @@ function trainingEffectiveness(period) {
   return `${comparison}。${observed}，${adopted}。`;
 }
 
-function trainingMetricsHTML(data) {
+function contractTrainingMetricsHTML(training) {
+  const validation = training?.validation;
+  return `<div class="training-model-head"><b>漲跌合約模型</b><span class="pill gray">${upDownTrainingLabel(training)}</span></div>
+    <dl class="training-metrics training-scores training-contract-scores">
+      <div><dt>Brier（驗證）</dt><dd>${trainingScore(validation?.brier)}</dd></div>
+      <div><dt>訓練／驗證筆數</dt><dd>${trainingCount(training?.training_count ?? training?.training_samples)}／${trainingCount(training?.validation_count ?? training?.validation_samples)}</dd></div>
+    </dl>`;
+}
+
+function trainingMetricsHTML(data, contracts) {
   const job = data || {};
-  const cards = TRAINING_HOURS.map(hours => {
+  const contract = new Map((contracts?.periods || []).map(p => [p.minutes, p.training]));
+  const shortCards = [5, 15].map(minutes => `<article class="training-period" data-training-minutes="${minutes}">
+      <div class="training-period-head"><h3>${minutes} 分鐘</h3></div>
+      ${contractTrainingMetricsHTML(contract.get(minutes))}</article>`).join("");
+  const marketCards = TRAINING_HOURS.map(hours => {
     const period = job.horizons?.[hours] || (hours === 24 ? job : {});
     const candidate = period.candidate || {};
     const adopted = period.adopted_version;
     const active = !!candidate.version && candidate.version === adopted;
     const label = active ? "已採用" : candidate.version
       ? (candidate.passed === false ? "未採用・未通過驗證" : candidate.validation ? "回測通過・未採用" : "未採用") : "尚無資料";
-    return `<article class="training-period"><div class="training-period-head"><h3>${hours} 小時</h3><span class="pill ${active ? "low" : "gray"}">${label}</span></div>
+    const badge = `<span class="pill ${active ? "low" : "gray"}">${label}</span>`;
+    return `<article class="training-period" data-training-minutes="${hours * 60}">
+      <div class="training-period-head"><h3>${hours} 小時</h3>${hours === 1 ? "" : badge}</div>
+      ${hours === 1 ? `<div class="training-model-head"><b>BTC 市場模型</b>${badge}</div>` : ""}
       <p class="training-meta">${trainingEffectiveness(period)}</p>
       <dl class="training-metrics training-scores">
       <div><dt>Brier（回測）</dt><dd>${trainingScore(candidate.scores?.brier)}</dd><small>基準 ${trainingScore(candidate.baseline?.brier)}</small></div>
       <div><dt>訓練／驗證筆數</dt><dd>${trainingCount(candidate.train_count)}／${trainingCount(candidate.valid_count)}</dd></div>
       <div><dt>最大回撤</dt><dd>${trainingPct(candidate.scores?.drawdown)}</dd></div></dl>
-      </article>`;
+      ${hours === 1 ? `<div class="training-model-detail">${contractTrainingMetricsHTML(contract.get(60))}</div>` : ""}</article>`;
   }).join("");
-  return `<section class="card training-section"><div class="card-h"><h2>${ICON.bars}訓練結果</h2><span class="chip-muted">BTCUSDC・LightGBM</span></div>
+  return `<section class="card training-section"><div class="card-h"><h2>${ICON.bars}訓練結果</h2><span class="chip-muted">BTC・LightGBM</span></div>
     <p class="training-meta"><span>${esc(TRAINING_STATES[job.state] || "尚無訓練資料")}</span>${job.finished_at ? `<span>最近結束 ${trainingDate(job.finished_at)}（台北）</span>` : ""}${job.next_at ? `<span>下輪 ${trainingDate(job.next_at)}（台北）</span>` : ""}<span>Brier 越低，預測機率越接近實際結果。</span></p>
-    <div class="training-grid">${cards}</div>
+    <div class="training-grid training-overview-grid">${shortCards}${marketCards}</div>
   </section>`;
 }
 
@@ -1570,7 +1586,7 @@ function trainingRunHTML(report, selected, page) {
   }).join("");
   return `<section id="training-report" class="card training-section"><div class="card-h"><h2>${title}</h2>
     ${selected ? `<a class="ok" href="${TRAINING_RESULTS}?page=${page}">回到最新訓練</a>` : ""}</div>
-    <p class="training-meta"><span>${trainingDate(report.finished_at)}（台北）</span>
+    <p class="training-meta"><span>BTC 市場模型</span><span>${trainingDate(report.finished_at)}（台北）</span>
       <span>${TRAINING_STATES[report.state] || "狀態未知"}</span>${Number.isFinite(report.elapsed_s) ? `<span>耗時 ${report.elapsed_s} 秒</span>` : ""}</p>
     <div class="training-grid">${cards}</div>
     ${dataset ? `<details class="training-assessment"><summary>本輪訓練資料</summary>
@@ -1649,20 +1665,22 @@ async function pageTraining(params) {
   const selected = /^\d{13}$/.test(requested || "") ? requested : null;
   const loadHistory = () => catalogPage(TRAINING_CATALOG, Number(params.get("page")), () => [], TRAINING_PAGE_SIZE);
   const render = async () => {
-    const [status, history] = await Promise.all([J("status.json"), loadHistory()]);
+    const [status, history, contracts] = await Promise.all([
+      J("status.json"), loadHistory(), J(UP_DOWN_FILE).catch(() => null),
+    ]);
     if (!active) return;
     const row = selected ? history.rows.find(item => item.id === selected) : history.latest;
     const id = selected || row?.id;
     const file = id ? `runs/training-run-${id}.json` : null;
     if (file) DATA.revisions[file] = row?.detail_rev;
     const report = file ? await J(file).catch(() => null) : null;
-    if (active) patchHTML($("#app"), trainingMetricsHTML(status.market_training) +
+    if (active) patchHTML($("#app"), trainingMetricsHTML(status.market_training, contracts) +
       researchMemoryHTML(status.research_memory) + trainingRunHTML(report, selected, history.page) + trainingHistoryHTML(history, selected));
   };
   await render();
   if (!active) return;
   if (selected) $("#training-report")?.scrollIntoView();
-  onData(["status.json", catalogFile(TRAINING_CATALOG)], render);
+  onData(["status.json", UP_DOWN_FILE, catalogFile(TRAINING_CATALOG)], render);
 }
 
 function marketTrainingHTML(snapshot) {

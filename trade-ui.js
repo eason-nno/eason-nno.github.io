@@ -69,8 +69,8 @@ function bindTradeTabs(render) {
     };
   });
 }
-function tradePage(items, pages, tab) {
-  const size = 5, total = Math.max(1, Math.ceil(items.length / size));
+function tradePage(items, pages, tab, size = 5) {
+  const total = Math.max(1, Math.ceil(items.length / size));
   const page = Math.max(0, Math.min(pages[tab] || 0, total - 1));
   pages[tab] = page;
   const footer = total === 1 ? "" : `<nav class="trade-pager" aria-label="交易紀錄分頁">
