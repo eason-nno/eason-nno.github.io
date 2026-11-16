@@ -473,16 +473,18 @@ function toast(msg, cls = "") {
 let WATCH = ["BTCUSDC", "ETHUSDC", "ZECUSDC"];
 let lastCoin = coinKey(localStorage.getItem("lastCoin") || "BTCUSDC");
 const RESEARCH_PROGRESS = "#/reports/progress";
+const TRAINING_RESULTS = "#/reports/training";
+const TEAM_ORGANIZATION = "#/ai-team";
 function renderNav(active) {
   const items = [["home", "#/", "總覽", ICON.home], ["coin", `#/coin/${lastCoin}`, "幣種研究", ICON.coin],
-    ["paper", "#/paper", "模擬交易", ICON.paper], ["reports", "#/reports", "研究報告", ICON.report],
-    ["training", "#/training", "訓練結果", ICON.bars]];
+    ["team", TEAM_ORGANIZATION, "AI 團隊", ICON.team], ["paper", "#/paper", "模擬交易", ICON.paper],
+    ["reports", "#/reports", "研究報告", ICON.report]];
   const route = location.hash.split("?")[0];
-  const current = route === "#/team" ? RESEARCH_PROGRESS : route;
+  const current = route === "#/team" ? RESEARCH_PROGRESS : route === "#/training" ? TRAINING_RESULTS : route;
   const menus = {
     paper: [["#/paper", "AI 團隊策略"], ...Object.entries(STRATEGY_ACCOUNTS).map(([id, name]) => [strategyRoute(id), name]),
             [UP_DOWN_ROUTE, "漲跌合約"]],
-    reports: [["#/reports", "AI 研究報告"], [RESEARCH_PROGRESS, "AI 研究進度"]],
+    reports: [["#/reports", "AI 研究報告"], [RESEARCH_PROGRESS, "AI 研究進度"], [TRAINING_RESULTS, "訓練結果"]],
   };
   $("#nav").innerHTML = items.map(([k, h, t, ic]) => menus[k] ?
     `<details class="nav-dropdown ${active === k ? "active" : ""}"><summary>${ic}<span>${t}</span><span class="chevron">▾</span></summary><div class="nav-menu">${menus[k].map(([href, label]) =>
@@ -1567,7 +1569,7 @@ function trainingRunHTML(report, selected, page) {
       ${trainingAssessmentHTML(candidate, period.forward)}</article>`;
   }).join("");
   return `<section id="training-report" class="card training-section"><div class="card-h"><h2>${title}</h2>
-    ${selected ? `<a class="ok" href="#/training?page=${page}">回到最新訓練</a>` : ""}</div>
+    ${selected ? `<a class="ok" href="${TRAINING_RESULTS}?page=${page}">回到最新訓練</a>` : ""}</div>
     <p class="training-meta"><span>${trainingDate(report.finished_at)}（台北）</span>
       <span>${TRAINING_STATES[report.state] || "狀態未知"}</span>${Number.isFinite(report.elapsed_s) ? `<span>耗時 ${report.elapsed_s} 秒</span>` : ""}</p>
     <div class="training-grid">${cards}</div>
@@ -1579,9 +1581,9 @@ function trainingRunHTML(report, selected, page) {
 function trainingHistoryHTML(history, selected) {
   const rows = history.rows.map(row => `<li data-sync-key="${esc(row.id)}"><div><b class="num">${trainingDate(row.finished_at)}（台北）</b>
     <div class="training-meta">${TRAINING_STATES[row.state] || "狀態未知"}${row.verified_hours?.length ? `・已驗證 ${row.verified_hours.join("／")} 小時` : ""}</div></div>
-    <a class="ok" href="#/training?page=${history.page}&amp;run=${encodeURIComponent(row.id)}"${selected === row.id ? ' aria-current="true"' : ""}>查看訓練報告</a></li>`).join("");
+    <a class="ok" href="${TRAINING_RESULTS}?page=${history.page}&amp;run=${encodeURIComponent(row.id)}"${selected === row.id ? ' aria-current="true"' : ""}>查看訓練報告</a></li>`).join("");
   return `<section class="card training-section"><div class="card-h"><h2>訓練紀錄</h2><span class="chip-muted">共 ${history.count} 份</span></div>
-    ${rows ? `<ul class="training-history">${rows}</ul>` : '<p class="training-meta">尚無已保存的訓練紀錄。</p>'}${reportPager(history, "#/training", "訓練紀錄分頁")}</section>`;
+    ${rows ? `<ul class="training-history">${rows}</ul>` : '<p class="training-meta">尚無已保存的訓練紀錄。</p>'}${reportPager(history, TRAINING_RESULTS, "訓練紀錄分頁")}</section>`;
 }
 
 function researchMemoryHTML(memory) {
@@ -1680,7 +1682,7 @@ function marketTrainingHTML(snapshot) {
     ${(review.accounts || []).map(a => `<p class="note">策略測試經理・${esc(a.name)}：已平倉 ${esc(a.closed)} 筆，獲利 ${esc(a.wins)} 筆，淨損益 ${fmtPrice(a.pnl, 2)} USDC。</p>`).join("")}
     ${(review.examples || []).map(x => `<p class="note"><a class="ok" href="#/report/${encodeURIComponent(x.report_id)}">${fmtTime(x.anchor_ms)} 複盤案例</a>・24 小時漲跌 ${trainingPct(x.return)}</p>`).join("")}</details>` : "";
   const title = periods.map(([hours]) => esc(hours)).join("／");
-  return `<section class="card" style="margin-top:16px"><div class="card-h"><h2>BTC 市場模型｜${title} 小時預測</h2><div class="right"><a class="btn sm" href="#/training">訓練結果</a></div></div>
+  return `<section class="card" style="margin-top:16px"><div class="card-h"><h2>BTC 市場模型｜${title} 小時預測</h2><div class="right"><a class="btn sm" href="${TRAINING_RESULTS}">訓練結果</a></div></div>
     ${ready ? `<p class="note">以 ${fmtTime(ready.anchor_ms)}（台北）收盤價 <b>${fmtPrice(ready.anchor_price, 2)} USDC</b> 為基準。LightGBM 預測供並行觀察。</p>` : ""}
     <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>週期</th><th>收高機率</th><th>最大漲／跌幅 P80</th><th>Brier</th><th>模型</th></tr></thead><tbody>${forecast}</tbody></table></div>${details}</section>`;
 }
@@ -1820,12 +1822,76 @@ async function pageSettings(active) {
 
 /* router / top bar */
 function setTitle(t, chip) { document.title = "easonAgents"; $("#app").setAttribute("aria-label", t); }
+function pageTeamOrganization() {
+  setTitle("AI 團隊");
+  const rows = [
+    ["analysts", [
+      ["market", "BTC 多週期與關鍵位"], ["sentiment", "市場情緒與槓桿擁擠"],
+      ["news", "新聞與事件背景"], ["onchain", "持倉、資金費與清算"],
+    ]],
+    ["debate", [["bull", "整理多方論據"], ["bear", "整理空方論據與反證"]]],
+    ["plan", [["manager", "整合論據與裁決"], ["trader", "擬定進場與保護"]]],
+    ["risk", [["aggressive", "衡量機會與風險"], ["conservative", "控制曝險與回撤"], ["neutral", "核對兩方證據"]]],
+    ["managers", [
+      ["test-manager", "依持倉與費後成本評估測試1、2、3號", "策略測試經理"],
+      ["pm", "排程報告・最終決定方向、部位與風險"],
+      ["up-down-manager", "依盤口與同源現價評估 5 分、15 分、1 小時", "漲跌合約經理"],
+    ]],
+  ];
+  $("#app").innerHTML = `<div class="team-org-page"><h1 id="team-org-title">AI 團隊</h1>
+    <section class="team-org" aria-labelledby="team-org-title">
+      <svg class="team-org-links" aria-hidden="true"></svg>
+      ${rows.map(([stage, roles]) => `<div class="team-org-row ${stage}">
+        ${roles.map(([key, desc, name]) => `<article class="team-org-role" data-role="${key}">
+          <h2>${esc(name || ROLE[key].name)}</h2><p>${esc(desc)}</p>
+        </article>`).join("")}
+      </div>`).join("")}
+    </section></div>`;
+  const board = $(".team-org");
+  const svg = $(".team-org-links", board);
+  const draw = () => {
+    const frame = svg.getBoundingClientRect();
+    const points = Object.fromEntries([...board.querySelectorAll("[data-role]")].map(card => {
+      const r = card.getBoundingClientRect();
+      return [card.dataset.role, { left: r.left - frame.left, right: r.right - frame.left,
+        top: r.top - frame.top, bottom: r.bottom - frame.top,
+        x: (r.left + r.right) / 2 - frame.left, y: (r.top + r.bottom) / 2 - frame.top }];
+    }));
+    const line = (d, tone, arrow = false) => `<path class="${tone}" d="${d}"${arrow ? ` marker-end="url(#team-org-${tone})"` : ""}/>`;
+    const join = (from, to) => {
+      const heads = from.map(key => points[key]), tails = to.map(key => points[key]);
+      const y = (Math.max(...heads.map(p => p.bottom)) + Math.min(...tails.map(p => p.top))) / 2;
+      const xs = [...heads, ...tails].map(p => p.x);
+      return line(`M${Math.min(...xs)} ${y}H${Math.max(...xs)}`, "research")
+        + heads.map(p => line(`M${p.x} ${p.bottom}V${y}`, "research")).join("")
+        + tails.map(p => line(`M${p.x} ${y}V${p.top}`, "research", true)).join("");
+    };
+    const { market, manager, trader, "test-manager": test, "up-down-manager": upDown } = points;
+    const branchX = Math.min(market.left, test.left) / 2;
+    const turnY = (Math.max(test.bottom, upDown.bottom, points.pm.bottom) + frame.height) / 2;
+    svg.innerHTML = `<defs>${["research", "technical"].map(tone => `<marker id="team-org-${tone}"
+      viewBox="0 0 8 8" refX="8" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 8 4 0 8Z" class="arrow ${tone}"/></marker>`).join("")}</defs>`
+      + join(["market", "sentiment", "news", "onchain"], ["bull", "bear"])
+      + join(["bull", "bear"], ["manager"])
+      + line(`M${manager.right} ${manager.y}H${trader.left}`, "research", true)
+      + join(["trader"], ["aggressive", "conservative", "neutral"])
+      + join(["aggressive", "conservative", "neutral"], ["pm"])
+      + line(`M${market.left} ${market.y}H${branchX}V${test.y}H${test.left}`, "technical", true)
+      + line(`M${branchX} ${test.y}V${turnY}H${upDown.x}V${upDown.bottom}`, "technical", true);
+  };
+  draw();
+  const resize = new ResizeObserver(draw);
+  resize.observe(board);
+  pageCleanup.push(() => resize.disconnect());
+}
 async function route() {
   pageCleanup.forEach((f) => { try { f(); } catch (e) {} }); pageCleanup = []; if(!$("#sheet")?.classList.contains("debate-wrap") || $("#sheet").dataset.route!==location.hash) closeSheet();
   const h = location.hash || "#/";
   const [requested, qs] = h.slice(1).split("?");
   const progressPath = RESEARCH_PROGRESS.slice(1);
-  const path = requested === "/team" ? progressPath : requested;
+  const trainingPath = TRAINING_RESULTS.slice(1);
+  const path = requested === "/team" ? progressPath : requested === "/training" ? trainingPath : requested;
   const params = new URLSearchParams(qs || "");
   const app = $("#app");
   app.innerHTML = `<div class="loading">載入中…</div>`;
@@ -1838,6 +1904,7 @@ async function route() {
     if (h !== (location.hash || "#/")) return;
     if (path === "/" || path === "") { renderNav("home"); await pageOverview(); }
     else if ((m = path.match(/^\/coin\/([A-Za-z0-9]+)/))) { renderNav("coin"); await pageCoin(m[1], params); }
+    else if (path === TEAM_ORGANIZATION.slice(1)) { renderNav("team"); pageTeamOrganization(); }
     else if (path === progressPath) { renderNav("reports"); await pageTeam(params); }
     else if (path === "/paper") { renderNav("paper"); await pagePaper(); }
     else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper("test1", params); }
@@ -1845,7 +1912,7 @@ async function route() {
     else if (path === "/paper/test3") { renderNav("paper"); await pageNewPaper("test3", params); }
     else if (path === UP_DOWN_ROUTE.slice(1)) { renderNav("paper"); await pageUpDown(); }
     else if (path === "/reports") { renderNav("reports"); await pageReports(params); }
-    else if (path === "/training" || path === "/reports/training") { renderNav("training"); await pageTraining(params); }
+    else if (path === trainingPath) { renderNav("reports"); await pageTraining(params); }
     else if ((m = path.match(/^\/report\/(.+)$/))) { renderNav("reports"); await pageReport(decodeURIComponent(m[1])); }
     else if (path === "/settings") { renderNav("settings"); await pageSettings(); }
     else { location.hash = "#/"; }
