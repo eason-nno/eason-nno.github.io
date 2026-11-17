@@ -1,5 +1,5 @@
 /* 各測試帳戶與團隊策略共用 trade-ui.js。 */
-const STRATEGY_ACCOUNTS = {test1: "測試1號", test2: "測試2號", test3: "測試3號"};
+const STRATEGY_ACCOUNTS = {test1: "測試1號", test2: "測試2號", test3: "測試3號", test4: "測試4號"};
 const strategyRoute = account => "#/paper/" + (account === "test1" ? "new" : account);
 const NEW_ACTIONS = {EVALUATION_FAILED:"評估失敗",REVERSE_LONG:"停損反手做多",REVERSE_SHORT:"停損反手做空",OPEN_LONG:"新開多單",OPEN_SHORT:"新開空單",ADD:"加倉",HOLD:"續抱",WAIT:"觀望",PAUSE_ADD:"暫停加倉",CANCEL_ENTRY:"取消委託",REDUCE:"部分減倉",CLOSE:"全部平倉",UPDATE_PROTECTION:"調整獲利保護"};
 function originalActionHTML(dec, execution) {
@@ -32,7 +32,7 @@ function strategyManagerHTML(P) {
   const route = cfg.luna_every_slot ? `每五分鐘使用 GPT-6 Luna（${effort}）${cfg.hourly_luna_active ? "" : "・等待 OpenAI 金鑰"}`
     : cfg.hourly_luna_active ? `${luna}用 GPT-6 Luna（${effort}），失敗由 ${esc(backup)} 補評` : "第 4 組 Gemini";
   const regular = cfg.luna_every_slot ? "" : `<dt>例行主模型</dt><dd>${esc(cfg.model || "gemini-3.5-flash-lite")}</dd><dt>例行備援模型</dt><dd>${esc(cfg.fallback_model || "gemini-3.1-flash-lite")}</dd>`;
-  return `<dl class="manager-details"><dt>評估 API</dt><dd>${route}</dd>${regular}<dt>評估狀態</dt><dd>${m.busy ? "評估中" : esc(m.message || "等待")}</dd><dt>最近評估</dt><dd>${m.last_evaluated ? fmtTime(m.last_evaluated*1000) : "尚未評估"}${m.model ? `・${esc(m.model)}` : ""}</dd><dt>報告標的</dt><dd>${binding ? esc(binding.symbol) : "等待研究報告"}</dd><dt>最新決策</dt><dd>${d ? `${esc(NEW_ACTIONS[d.action] || d.action)}・${fmtTime(d.created_ms)}<br>${esc(d.reason)}` : "尚無決策紀錄"}</dd></dl>${binding ? `<a class="ok" href="#/report/${encodeURIComponent(binding.run_id)}">對應研究報告 ›</a>` : ""}<p class="note">三個測試帳戶共用一輪，只評估報告標的。先對照上一份研究和各帳戶的交易結果。研究報告過期時，既有持倉仍可評估，停利、資金費及強平持續運作。</p>`;
+  return `<dl class="manager-details"><dt>評估 API</dt><dd>${route}</dd>${regular}<dt>評估狀態</dt><dd>${m.busy ? "評估中" : esc(m.message || "等待")}</dd><dt>最近評估</dt><dd>${m.last_evaluated ? fmtTime(m.last_evaluated*1000) : "尚未評估"}${m.model ? `・${esc(m.model)}` : ""}</dd><dt>報告標的</dt><dd>${binding ? esc(binding.symbol) : "等待研究報告"}</dd><dt>最新決策</dt><dd>${d ? `${esc(NEW_ACTIONS[d.action] || d.action)}・${fmtTime(d.created_ms)}<br>${esc(d.reason)}` : "尚無決策紀錄"}</dd></dl>${binding ? `<a class="ok" href="#/report/${encodeURIComponent(binding.run_id)}">對應研究報告 ›</a>` : ""}<p class="note">四個測試帳戶共用一輪，只評估報告標的。先對照上一份研究和各帳戶的交易結果。研究報告過期時，既有持倉仍可評估，停利、資金費及強平持續運作。</p>`;
 }
 function previousReviewHTML(review, link = true) {
   if(!review)return "";
@@ -43,7 +43,7 @@ function previousReviewHTML(review, link = true) {
   return `<section class="card new-section"><div class="card-h"><h2>前次研究與實際結果回顧</h2></div><p>${reference}</p><p>先前方向 ${esc(previous.decision || "—")}・觀測最高 ${fmtPrice(market.high)}／最低 ${fmtPrice(market.low)}・${review.horizon_matured ? "已到原定觀察期限，仍依實際成交判讀" : "階段檢討，尚不提前判定整份報告成敗"}</p><p class="note">${esc(market.coverage || review.note || "回顧資料不足時如實保留未知。")}</p><p class="note">對照前次理由與已保存成交，由各角色說明本次延續或修正的證據；價格觸及不等於實際成交。</p></section>`;
 }
 function strategyBranchHTML(P, details = strategyManagerHTML(P)) {
-  return `<div class="strategy-branch"><div class="branch-node" id="strategy-research"><h3>團隊市場研究報告</h3><p>四位分析師、多空研究員、研究經理的研究摘要</p><small class="muted">供三個測試帳戶參考市場背景</small></div><span class="branch-arrow" aria-hidden="true">→</span><div class="agent branch-node" id="ag-new-strategy" role="button" tabindex="0" aria-label="策略測試經理：查看評估狀態"><div class="ah"><span class="ai">${ICON.brief}</span><span class="an">策略測試經理</span></div>${details}</div><span class="branch-arrow" aria-hidden="true">→</span><div class="branch-node"><h3>測試1號／2號／3號</h3><p>獨立資金與持倉<br>只處理報告標的</p><a class="ok" href="#/paper/new">查看測試1號 ›</a> <a class="ok" href="#/paper/test2">查看測試2號 ›</a> <a class="ok" href="#/paper/test3">查看測試3號 ›</a></div></div>`;
+  return `<div class="strategy-branch"><div class="branch-node" id="strategy-research"><h3>團隊市場研究報告</h3><p>四位分析師、多空研究員、研究經理的研究摘要</p><small class="muted">供四個測試帳戶參考市場背景</small></div><span class="branch-arrow" aria-hidden="true">→</span><div class="agent branch-node" id="ag-new-strategy" role="button" tabindex="0" aria-label="策略測試經理：查看評估狀態"><div class="ah"><span class="ai">${ICON.brief}</span><span class="an">策略測試經理</span></div>${details}</div><span class="branch-arrow" aria-hidden="true">→</span><div class="branch-node"><h3>模擬測試帳戶</h3><p>獨立資金與持倉<br>只處理報告標的</p>${Object.entries(STRATEGY_ACCOUNTS).map(([id,name])=>`<a class="ok" href="${strategyRoute(id)}">${name} ›</a>`).join(" ")}</div></div>`;
 }
 function strategyAdviceHTML(advice) {
   if (!advice) return "";
@@ -149,7 +149,7 @@ async function pageNewPaper(account = "test1", params = new URLSearchParams()) {
   let reports = await loadReports(P);
   if (view !== location.hash) return;
   const test2=account !== "test1", name=STRATEGY_ACCOUNTS[account];
-  setTitle(name, "獨立虛擬帳戶");
+  setTitle(name, P.opening_notional_usdc ? "開倉名目 " + P.opening_notional_usdc + " USDC" : "獨立虛擬帳戶");
   const n=(v,d=2)=>v == null ? "—" : Number(v).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
   const money=v=>v == null ? "—" : `${v>0?"+":""}${n(v)}`;
   const report=c=>`<a class="ok" href="#/report/${encodeURIComponent(c.report_id)}">研究報告</a>`;
@@ -163,7 +163,7 @@ async function pageNewPaper(account = "test1", params = new URLSearchParams()) {
     sections: `
     ${P.engine.last_error || P.engine.protection_warning ? `<div class="callout"><b>模擬帳戶狀態</b><span>${esc(P.engine.last_error || P.engine.protection_warning)}</span></div>` : ""}
     ${strategyReportsHTML(reports, account)}
-    <section class="card new-manager"><div class="card-h"><h2>${ICON.brief}策略測試經理</h2><span class="chip-muted">${(P?.settings?.luna_every_slot || P?.settings?.hourly_luna_active) ? "GPT-6 Luna" : "第 4 組・Flash-Lite"}</span></div>${strategyManagerHTML(P)}${strategyLessonsHTML(snapshot.lessons?.[test2 ? "test2" : "averaging"])}</section>`,
+    <section class="card new-manager"><div class="card-h"><h2>${ICON.brief}策略測試經理</h2><span class="chip-muted">${(P?.settings?.luna_every_slot || P?.settings?.hourly_luna_active) ? "GPT-6 Luna" : "第 4 組・Flash-Lite"}</span></div>${strategyManagerHTML(P)}${account === "test4" ? "" : strategyLessonsHTML(snapshot.lessons?.[test2 ? "test2" : "averaging"])}</section>`,
   });
   $("#app").innerHTML = layout();
   bindStrategyReports();

@@ -2005,6 +2005,7 @@ async function route() {
     else if (path === "/paper/new") { renderNav("paper"); await pageNewPaper("test1", params); }
     else if (path === "/paper/test2") { renderNav("paper"); await pageNewPaper("test2", params); }
     else if (path === "/paper/test3") { renderNav("paper"); await pageNewPaper("test3", params); }
+    else if (path === "/paper/test4") { renderNav("paper"); await pageNewPaper("test4", params); }
     else if (path === UP_DOWN_ROUTE.slice(1)) { renderNav("paper"); await pageUpDown(); }
     else if (path === "/reports") { renderNav("reports"); await pageReports(params); }
     else if (path === trainingPath) { renderNav("reports"); await pageTraining(params); }
