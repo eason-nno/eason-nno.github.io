@@ -149,8 +149,8 @@ async function pageNewPaper(account = "test1", params = new URLSearchParams()) {
   let reports = await loadReports(P);
   if (view !== location.hash) return;
   const test2=account !== "test1", name=STRATEGY_ACCOUNTS[account];
-  setTitle(name, P.opening_notional_usdc ? "開倉名目 " + P.opening_notional_usdc + " USDC" : "獨立虛擬帳戶");
   const n=(v,d=2)=>v == null ? "—" : Number(v).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+  setTitle(name, account === "test4" ? `起始資金 ${n(P.initial, 0)} USDC` : "獨立虛擬帳戶");
   const money=v=>v == null ? "—" : `${v>0?"+":""}${n(v)}`;
   const report=c=>`<a class="ok" href="#/report/${encodeURIComponent(c.report_id)}">研究報告</a>`;
   const contract=c=>`<div class="pc-name">${coinIcon(baseOf(c.symbol),22)}<b>${esc(c.symbol)}</b><span class="tag">永續</span><span class="tag">${formatLeverage(c.leverage)} 逐倉</span><span class="tag ${c.side === "LONG" ? "t-up" : "t-down"}">${c.side === "LONG" ? "做多" : "做空"}</span></div>`;
