@@ -18,6 +18,11 @@ const UP_DOWN_EVALUATION = {
   evaluating: "評估中", evaluated: "本輪已評估", no_decision: "本輪無有效決策",
 };
 
+function trainingScore(brier) {
+  return Number.isFinite(brier) && brier >= 0 && brier <= 1
+    ? ((1 - Math.sqrt(brier)) * 100).toFixed(2) + "%" : "—";
+}
+
 function upDownStatusLabel(status) {
   return Object.hasOwn(UP_DOWN_STATES, status) ? UP_DOWN_STATES[status] : "待確認";
 }
@@ -128,7 +133,7 @@ function upDownPeriodHTML(minutes, data = {}) {
       ${training ? `<dl class="up-down-metrics">${upDownFields([
         ["狀態", upDownTrainingLabel(training)],
         ["訓練／驗證筆數", `${upDownNumber(training.training_count ?? training.training_samples, 0)}／${upDownNumber(training.validation_count ?? training.validation_samples, 0)}`],
-        ["Brier", upDownNumber(training.brier ?? training.validation?.brier, 4)],
+        ["機率分數", trainingScore(training.brier ?? training.validation?.brier)],
         ["訓練時間", upDownTime(training.trained_at ?? training.at)],
         ["官方已結算場次", upDownNumber(training.official_settled, 0)],
       ])}</dl>` : '<p class="dim">尚無訓練資料</p>'}</div>

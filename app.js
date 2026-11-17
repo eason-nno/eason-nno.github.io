@@ -1445,17 +1445,18 @@ async function pageReports(params) {
 }
 const REPORT_ORDER = [["pm", "投資組合經理｜最終決策"], ["trader", "交易員｜交易計畫"], ["manager", "研究經理｜研究結論"], ["market", "技術分析師"], ["sentiment", "情緒分析師"], ["news", "加密新聞分析師"], ["onchain", "鏈上 / 衍生品分析師"], ["bull", "多頭研究員"], ["bear", "空頭研究員"], ["aggressive", "積極派風控"], ["conservative", "保守派風控"], ["neutral", "中立派風控"]];
 const TRAINING_HOURS = [1, 4, 24];
+const FORECAST_FRAMES = new Map([["5m", "5 分鐘"], ["15m", "15 分鐘"], ["1h", "1 小時"],
+  ["4h", "4 小時"], ["24h", "24 小時"], ["1w", "週 K"]]);
 const TRAINING_PAGE_SIZE = 8;
 const TRAINING_CATALOG = "training-runs";
 const TRAINING_STATES = {running:"訓練中", complete:"訓練完成", no_new_data:"等待新樣本", insufficient_data:"完整樣本不足", timeout:"訓練逾時", failed:"訓練失敗", interrupted:"訓練中斷"};
 const trainingPct = (value, digits = 2) => Number.isFinite(value) ? (value * 100).toFixed(digits) + "%" : "—";
-const trainingScore = value => Number.isFinite(value) ? value.toFixed(4) : "—";
 const trainingCount = value => Number.isInteger(value) ? value.toLocaleString("en-US") : "—";
 const trainingDate = value => value ? fmtClock(new Date(value)).slice(0, 16) : "—";
 
 function trainingComparisonHTML(metrics) {
   const variants = [["baseline", "歷史收高率"], ["raw", "原始 LightGBM"], ["calibrated", "校準後"], ["incumbent", "已採用版本"]];
-  return `<table class="tbl training-comparison"><thead><tr><th scope="col">比較版本</th><th scope="col">Brier</th><th scope="col">最大回撤</th></tr></thead><tbody>
+  return `<table class="tbl training-comparison"><thead><tr><th scope="col">比較版本</th><th scope="col">機率分數</th><th scope="col">最大回撤</th></tr></thead><tbody>
     ${variants.filter(([key]) => metrics[key]).map(([key, label]) => `<tr><th scope="row">${label}</th><td class="num">${trainingScore(metrics[key].brier)}</td><td class="num">${trainingPct(metrics[key].drawdown)}</td></tr>`).join("")}
     </tbody></table><p class="training-meta">P80 實際涵蓋率・漲幅 ${trainingPct(metrics.p80?.rise, 1)}／跌幅 ${trainingPct(metrics.p80?.fall, 1)}</p>`;
 }
@@ -1468,13 +1469,13 @@ function trainingAssessmentHTML(candidate, forward) {
   const forwardState = {observing: "觀察中", adopted: "已採用", not_adopted: "未採用"};
   const span = item => `${trainingDate(item.start_ms)} 至 ${trainingDate(item.end_ms)}・${trainingCount(item.count)} 筆`;
   return `<details class="training-assessment"><summary>詳細資料</summary>
-    ${candidate.version ? `<p class="training-meta">候選版本 ${esc(candidate.version)}・Brier ${trainingScore(candidate.scores?.brier)}・回撤 ${trainingPct(candidate.scores?.drawdown)}</p>` : ""}
+    ${candidate.version ? `<p class="training-meta">候選版本 ${esc(candidate.version)}・機率分數 ${trainingScore(candidate.scores?.brier)}・回撤 ${trainingPct(candidate.scores?.drawdown)}</p>` : ""}
     ${holdout ? `<p class="training-meta">較早回測通過 ${trainingCount(validation.rolling_passed)}／${trainingCount(validation.rolling?.length)} 段・候選為 ${variant}・校準 ${trainingCount(validation.calibration_count)} 筆</p>
       ${holdout.train ? `<p class="training-meta">訓練 ${span(holdout.train)}</p>` : ""}
       ${holdout.calibration ? `<p class="training-meta">校準 ${span(holdout.calibration)}</p>` : ""}
       <p class="training-meta">保留驗證 ${span(holdout)}</p>
       ${trainingComparisonHTML(holdout.metrics)}
-      ${validation.rolling?.map((item, i) => `<p class="training-meta">回測 ${i + 1}・${span(item)}・Brier ${trainingScore(item.metrics?.[candidate.variant]?.brier)}</p>`).join("") || ""}` : ""}
+      ${validation.rolling?.map((item, i) => `<p class="training-meta">回測 ${i + 1}・${span(item)}・機率分數 ${trainingScore(item.metrics?.[candidate.variant]?.brier)}</p>`).join("") || ""}` : ""}
     ${forward ? `<p class="training-meta">前瞻模型 ${esc(forward.version)}・${forwardState[forward.state] || "等待觀察"}${forward.historical_passed === false ? "・回測未達標" : ""}</p>
       <p class="training-meta">已結算 ${trainingCount(forward.evaluated_count)} 筆・待結算 ${trainingCount(forward.pending_count)} 筆。至少 ${trainingCount(forward.minimum_count)} 筆、跨 ${trainingCount(forward.minimum_days)} 天才評估採用。</p>
       ${forward.metrics ? trainingComparisonHTML(forward.metrics) : '<p class="training-meta">尚無已結算的前瞻結果。</p>'}` : ""}
@@ -1498,14 +1499,43 @@ function contractTrainingMetricsHTML(training) {
   const validation = training?.validation;
   return `<div class="training-model-head"><b>漲跌合約模型</b><span class="pill gray">${upDownTrainingLabel(training)}</span></div>
     <dl class="training-metrics training-scores training-contract-scores">
-      <div><dt>Brier（驗證）</dt><dd>${trainingScore(validation?.brier)}</dd></div>
+      <div><dt>機率分數（驗證）</dt><dd>${trainingScore(validation?.brier)}</dd></div>
       <div><dt>訓練／驗證筆數</dt><dd>${trainingCount(training?.training_count ?? training?.training_samples)}／${trainingCount(training?.validation_count ?? training?.validation_samples)}</dd></div>
     </dl>`;
+}
+
+function fixedForecastMetricsHTML(job, contract) {
+  const states = {running: "核對中", complete: "行情已核對", incomplete: "等待部分行情",
+    failed: "核對暫未完成", timeout: "核對逾時"};
+  const cards = Array.from(FORECAST_FRAMES, ([frame, label]) => {
+    const period = job.horizons?.[frame] || {};
+    const minutes = {"5m": 5, "15m": 15, "1h": 60}[frame];
+    const forward = period.forward;
+    const range = period.forecast;
+    const current = period.state === "ready" && period.target_ms > Date.now();
+    return `<article class="training-period" data-market-forecast="${frame}">
+      <div class="training-period-head"><h3>${label}</h3></div>
+      ${current ? `<p class="training-meta">至 ${trainingDate(period.target_ms)}（台北）・收高 ${trainingPct(range?.direction, 1)}・漲／跌幅 P80 ${trainingPct(range?.rise)}／${trainingPct(range?.fall)}</p>`
+        : '<p class="training-meta">等待下一根已收線行情</p>'}
+      <dl class="training-metrics training-scores">
+        <div><dt>機率分數（回測）</dt><dd>${trainingScore(period.scores?.brier)}</dd></div>
+        <div><dt>機率分數（前瞻）</dt><dd>${trainingScore(forward?.brier)}</dd><small>已核對 ${trainingCount(forward?.scored ?? 0)} 筆</small></div>
+        <div><dt>前瞻方向命中</dt><dd>${trainingPct(forward?.accuracy, 1)}</dd></div>
+      </dl>
+      ${minutes ? contractTrainingMetricsHTML(contract.get(minutes)) : ""}
+    </article>`;
+  }).join("");
+  return `<section class="card training-section"><div class="card-h"><h2>${ICON.bars}訓練結果</h2>
+    <span class="chip-muted">${esc(job.symbol)}・全歷史＋指標</span></div>
+    <p class="training-meta">${esc(states[job.state] || "等待行情核對")}・機率分數 50% 為基準
+    ${job.next_at ? `・下次核對 ${trainingDate(job.next_at)}（台北）` : ""}</p>
+    <div class="training-grid training-overview-grid">${cards}</div></section>`;
 }
 
 function trainingMetricsHTML(data, contracts) {
   const job = data || {};
   const contract = new Map((contracts?.periods || []).map(p => [p.minutes, p.training]));
+  if (job.fixed_model) return fixedForecastMetricsHTML(job, contract);
   const shortCards = [5, 15].map(minutes => `<article class="training-period" data-training-minutes="${minutes}">
       <div class="training-period-head"><h3>${minutes} 分鐘</h3></div>
       ${contractTrainingMetricsHTML(contract.get(minutes))}</article>`).join("");
@@ -1522,13 +1552,13 @@ function trainingMetricsHTML(data, contracts) {
       ${hours === 1 ? `<div class="training-model-head"><b>BTC 市場模型</b>${badge}</div>` : ""}
       <p class="training-meta">${trainingEffectiveness(period)}</p>
       <dl class="training-metrics training-scores">
-      <div><dt>Brier（回測）</dt><dd>${trainingScore(candidate.scores?.brier)}</dd><small>基準 ${trainingScore(candidate.baseline?.brier)}</small></div>
+      <div><dt>機率分數（回測）</dt><dd>${trainingScore(candidate.scores?.brier)}</dd><small>基準 ${trainingScore(candidate.baseline?.brier)}</small></div>
       <div><dt>訓練／驗證筆數</dt><dd>${trainingCount(candidate.train_count)}／${trainingCount(candidate.valid_count)}</dd></div>
       <div><dt>最大回撤</dt><dd>${trainingPct(candidate.scores?.drawdown)}</dd></div></dl>
       ${hours === 1 ? `<div class="training-model-detail">${contractTrainingMetricsHTML(contract.get(60))}</div>` : ""}</article>`;
   }).join("");
   return `<section class="card training-section"><div class="card-h"><h2>${ICON.bars}訓練結果</h2><span class="chip-muted">BTC・LightGBM</span></div>
-    <p class="training-meta"><span>${esc(TRAINING_STATES[job.state] || "尚無訓練資料")}</span>${job.finished_at ? `<span>最近結束 ${trainingDate(job.finished_at)}（台北）</span>` : ""}${job.next_at ? `<span>下輪 ${trainingDate(job.next_at)}（台北）</span>` : ""}<span>Brier 越低，預測機率越接近實際結果。</span></p>
+    <p class="training-meta"><span>${esc(TRAINING_STATES[job.state] || "尚無訓練資料")}</span>${job.finished_at ? `<span>最近結束 ${trainingDate(job.finished_at)}（台北）</span>` : ""}${job.next_at ? `<span>下輪 ${trainingDate(job.next_at)}（台北）</span>` : ""}<span>機率分數 50% 為基準</span></p>
     <div class="training-grid training-overview-grid">${shortCards}${marketCards}</div>
   </section>`;
 }
@@ -1545,7 +1575,7 @@ function upDownForwardHTML(validation) {
         <td class="num">${trainingScore(metric?.brier)}</td><td class="num">${net}</td>${risk}</tr>`;
     }).join("");
     return `<table class="tbl training-comparison"><thead><tr><th scope="col">模型</th><th scope="col">方向命中</th>
-      <th scope="col">Brier</th><th scope="col">費後損益</th>${showRisk
+      <th scope="col">機率分數</th><th scope="col">費後損益</th>${showRisk
         ? '<th scope="col">交易勝率</th><th scope="col">最大回撤<br><small>USDT</small></th>' : ""}
       </tr></thead><tbody>${rows}</tbody></table>`;
   };
@@ -1727,11 +1757,13 @@ async function pageTraining(params) {
 function marketTrainingHTML(snapshot) {
   if (!snapshot) return "";
   const periods = Object.entries(snapshot.horizons || {24: snapshot});
-  const ready = periods.find(([, item]) => item.forecast)?.[1];
-  const states = {waiting:"等待首次訓練完成。", waiting_market:"等待完整的已收線行情。", unavailable:"本次模型預測暫時無法取得。"};
+  const states = {waiting:"等待首次訓練完成。", waiting_market:"等待完整的已收線行情。", expired:"預測時段已結束。",
+    unavailable:"本次模型預測暫時無法取得。"};
   const forecast = periods.map(([hours, item]) => {
-    const p = item.forecast;
-    return `<tr><th scope="row">${esc(hours)} 小時</th>${p ? `<td class="num">${trainingPct(p.direction, 1)}</td><td class="num">${trainingPct(p.rise)}／${trainingPct(p.fall)}</td><td class="num">${trainingScore(item.scores?.brier)}</td><td>${esc(item.version)}・${item.shadow ? "候選" : "已採用"}</td>` : `<td colspan="4" class="muted">${esc(states[item.state] || states.unavailable)}</td>`}</tr>`;
+    const p = item.state === "ready" ? item.forecast : null;
+    const timeframe = FORECAST_FRAMES.get(hours) || `${hours} 小時`;
+    const model = item.fixed ? "前瞻觀察" : item.shadow ? "候選" : "已採用";
+    return `<tr><th scope="row">${esc(timeframe)}</th>${p ? `<td class="num">${fmtTime(item.anchor_ms)}<br><small>${fmtPrice(item.anchor_price, 2)}</small></td><td class="num">${trainingPct(p.direction, 1)}</td><td class="num">${trainingPct(p.rise)}／${trainingPct(p.fall)}</td><td class="num">${trainingScore(item.scores?.brier)}</td><td>${esc(item.version)}・${model}</td>` : `<td colspan="5" class="muted">${esc(states[item.state] || states.unavailable)}</td>`}</tr>`;
   }).join("");
   const review = snapshot.role_review;
   const details = review ? `<details class="din"><summary>近 ${esc(review.days)} 天角色複盤</summary>
@@ -1740,10 +1772,8 @@ function marketTrainingHTML(snapshot) {
     ${(review.roles || []).map(row => `<tr><td>${esc(ROLE_NAME[row.role] || row.role)}</td><td>${esc(row.cases)}</td><td>${row.scored ? esc(row.correct + "／" + row.scored) : "—"}</td></tr>`).join("")}</tbody></table>
     ${(review.accounts || []).map(a => `<p class="note">策略測試經理・${esc(a.name)}：已平倉 ${esc(a.closed)} 筆，獲利 ${esc(a.wins)} 筆，淨損益 ${fmtPrice(a.pnl, 2)} USDC。</p>`).join("")}
     ${(review.examples || []).map(x => `<p class="note"><a class="ok" href="#/report/${encodeURIComponent(x.report_id)}">${fmtTime(x.anchor_ms)} 複盤案例</a>・24 小時漲跌 ${trainingPct(x.return)}</p>`).join("")}</details>` : "";
-  const title = periods.map(([hours]) => esc(hours)).join("／");
-  return `<section class="card" style="margin-top:16px"><div class="card-h"><h2>BTC 市場模型｜${title} 小時預測</h2><div class="right"><a class="btn sm" href="${TRAINING_RESULTS}">訓練結果</a></div></div>
-    ${ready ? `<p class="note">以 ${fmtTime(ready.anchor_ms)}（台北）收盤價 <b>${fmtPrice(ready.anchor_price, 2)} USDC</b> 為基準。LightGBM 預測供並行觀察。</p>` : ""}
-    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>週期</th><th>收高機率</th><th>最大漲／跌幅 P80</th><th>Brier</th><th>模型</th></tr></thead><tbody>${forecast}</tbody></table></div>${details}</section>`;
+  return `<section class="card" style="margin-top:16px"><div class="card-h"><h2>${esc(snapshot.symbol || "BTCUSDC")} 市場模型</h2><div class="right"><a class="btn sm" href="${TRAINING_RESULTS}">訓練結果</a></div></div>
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>週期</th><th>收線基準（台北）</th><th>收高機率</th><th>最大漲／跌幅 P80</th><th>機率分數</th><th>模型</th></tr></thead><tbody>${forecast}</tbody></table></div>${details}</section>`;
 }
 async function pageReport(id) {
   const view = location.hash;
