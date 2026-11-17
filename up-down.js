@@ -174,6 +174,48 @@ function upDownTrades(snapshot, tab, pages) {
     (index, label) => label === "已實現淨損益" && Number.isFinite(rows[index].pnl) ? signCls(rows[index].pnl) : "") + footer;
 }
 
+function upDownCalendarHTML(snapshot, selection) {
+  const daily = snapshot.daily_performance || {};
+  const marketTime = Number.isFinite(snapshot.updated_at) ? snapshot.updated_at : Date.now();
+  const today = new Date(marketTime + 8 * 3600_000).toISOString().slice(0, 10);
+  const months = [...new Set([today.slice(0, 7), ...Object.keys(daily)
+    .filter(key => /^\d{4}-(0[1-9]|1[0-2])-\d{2}$/.test(key)).map(key => key.slice(0, 7))])].sort().reverse();
+  const month = months.includes(selection.month) ? selection.month : months[0];
+  const [year, number] = month.split("-").map(Number);
+  const offset = new Date(Date.UTC(year, number - 1, 1)).getUTCDay();
+  const count = new Date(Date.UTC(year, number, 0)).getUTCDate();
+  const dateKey = day => month + "-" + String(day).padStart(2, "0");
+  const selected = selection.day?.startsWith(month + "-") ? selection.day
+    : today.startsWith(month + "-") ? today
+    : Object.keys(daily).filter(key => key.startsWith(month + "-")).sort().at(-1) || dateKey(1);
+  const details = daily[selected];
+  const shortMoney = value => (value > 0 ? "+" : "") + upDownNumber(value);
+  const score = stats => stats?.trades ? upDownNumber(100 * stats.wins / stats.trades) + "%" : "—";
+  const heat = Array.from({length: count}, (_, i) => {
+    const key = dateKey(i + 1);
+    const item = daily[key];
+    const pnl = item?.pnl;
+    const booked = Number.isFinite(pnl) && item.trades > 0;
+    return `<button type="button" data-updown-day="${key}" aria-pressed="${key === selected}" class="updown-day ${booked ? signCls(pnl) : ""}"
+      aria-label="${key}，${booked ? shortMoney(pnl) + " USDT" : "無平倉紀錄"}"><b>${i + 1}</b>
+      ${booked ? `<span class="num">${shortMoney(pnl)}</span>` : ""}</button>`;
+  }).join("");
+  const periods = [[null, "當日總勝率"], ...Array.from(UP_DOWN_PERIODS, ([key, label]) => [key, label + "勝率"])];
+  return `<div class="card-h updown-calendar-head"><h2>單日盈虧 <small>USDT・台北時間</small></h2>
+    <select data-updown-month aria-label="選擇月份">${months.map(value =>
+      `<option${value === month ? " selected" : ""}>${value}</option>`).join("")}</select></div>
+    <div class="updown-calendar-grid" aria-label="已實現淨損益日曆">
+      ${["日","一","二","三","四","五","六"].map(label => `<div class="updown-weekday">${label}</div>`).join("")}
+      ${'<span aria-hidden="true"></span>'.repeat(offset)}${heat}</div>
+    <div class="updown-calendar-detail" aria-live="polite"><strong>${esc(selected)}</strong>
+      ${details?.trades ? `<span class="num ${signCls(details.pnl)}">${upDownMoney(details.pnl, true)}</span>` : ""}
+      ${details?.trades ? `<dl>${periods.map(([key, label]) => {
+        const stats = key === null ? details : details.periods?.[key];
+        return `<div><dt>${label}</dt><dd class="num">${score(stats)}
+          <small>${stats?.trades ? `${stats.wins} 勝／${stats.trades} 筆` : "無平倉"}</small></dd></div>`;
+      }).join("")}</dl>` : `<p class="note">${snapshot.daily_performance ? "當日無平倉或結算紀錄。" : "等待同步單日盈虧紀錄。"}</p>`}</div>`;
+}
+
 function upDownPageHTML(snapshot, unavailable = false) {
   if (!snapshot) return `<section class="card" aria-label="BTC 漲跌合約"><div class="empty-state"><b>${unavailable
     ? "資料暫時無法讀取，將在下一次同步時重試。" : "等待主機發布模擬帳戶資料。"}</b></div></section>`;
@@ -189,14 +231,15 @@ function upDownPageHTML(snapshot, unavailable = false) {
         <small>可用資金 ${upDownMoney(snapshot.balance)}・委託預留 ${upDownMoney(snapshot.reserved)}</small></div>
       <div class="card kcard"><small>已入帳淨損益</small><div class="row"><span class="big num ${signCls(snapshot.realized_pnl)}">${upDownNumber(snapshot.realized_pnl)}</span></div>
         <small>手續費 ${upDownMoney(snapshot.fees_paid)}</small></div>
-      <div class="card kcard"><small>總勝率</small><div class="row"><span class="big num">${winRate(snapshot.win_rate)}</span></div>
-        <small>${Number.isFinite(snapshot.trades) ? `${snapshot.wins} 勝／${snapshot.trades} 筆已平倉` : "尚無統計"}</small>
+      <details class="card kcard updown-overall-win" id="up-down-overall-win"><summary><small>總勝率</small><div class="row"><span class="big num">${winRate(snapshot.win_rate)}</span></div>
+        <small>${Number.isFinite(snapshot.trades) ? `${snapshot.wins} 勝／${snapshot.trades} 筆已平倉` : "尚無統計"}</small></summary>
         <dl class="up-down-win-rates">${Array.from(UP_DOWN_PERIODS, ([minutes, label]) =>
-          `<div><dt>${label}勝率</dt><dd class="num">${winRate(snapshot.win_rates_by_period?.[minutes])}</dd></div>`).join("")}</dl></div>
+          `<div><dt>${label}勝率</dt><dd class="num">${winRate(snapshot.win_rates_by_period?.[minutes])}</dd></div>`).join("")}</dl></details>
       <div class="card kcard"><small>最大回撤（已實現權益）</small><div class="row"><span class="big num ${snapshot.max_drawdown_pct > 0 ? "down" : ""}">${Number.isFinite(snapshot.max_drawdown_pct)
         ? upDownNumber(snapshot.max_drawdown_pct) + "%" : "—"}</span></div><small>含成交手續費</small></div>`,
     equity: tradeEquityHTML("up-down-curve", "已入帳權益・含手續費"),
-    sections: `<section class="card new-section"><div class="card-h"><h2>${ICON.brief}漲跌合約經理</h2><span class="chip-muted">${upDownStatusLabel(snapshot.status)}</span></div>
+    sections: `<section class="card new-section" id="up-down-calendar" aria-label="單日盈虧日曆"></section>
+      <section class="card new-section"><div class="card-h"><h2>${ICON.brief}漲跌合約經理</h2><span class="chip-muted">${upDownStatusLabel(snapshot.status)}</span></div>
       <p class="note">${esc(snapshot.status_reason || "")}・更新 ${esc(upDownTime(snapshot.updated_at))}（台北）</p>
       <div class="up-down-periods" aria-label="各週期行情、決策與訓練">${Array.from(UP_DOWN_PERIODS, ([minutes]) =>
         upDownPeriodHTML(minutes, periods.get(minutes))).join("")}</div></section>`,
@@ -207,7 +250,28 @@ async function pageUpDown() {
   setTitle("漲跌合約");
   const view = location.hash, app = $("#app"), pages = {};
   let snapshot = null, tab = "pos", series, chart;
+  const calendarSelection = {month: null, day: null};
   const active = () => location.hash === view;
+  const renderCalendar = () => {
+    const calendar = $("#up-down-calendar");
+    if (!calendar) return;
+    patchHTML(calendar, upDownCalendarHTML(snapshot, calendarSelection));
+    calendar.onchange = event => {
+      if (!event.target.matches("[data-updown-month]")) return;
+      calendarSelection.month = event.target.value;
+      calendarSelection.day = null;
+      renderCalendar();
+      calendar.querySelector("[data-updown-month]")?.focus();
+    };
+    calendar.onclick = event => {
+      const button = event.target.closest("[data-updown-day]");
+      if (!button) return;
+      calendarSelection.day = button.dataset.updownDay;
+      calendarSelection.month = calendarSelection.day.slice(0, 7);
+      renderCalendar();
+      calendar.querySelector("[aria-pressed=true]")?.focus();
+    };
+  };
   const render = (next = tab) => {
     if (!active() || !snapshot || !$("#pp-body")) return;
     tab = next;
@@ -224,7 +288,10 @@ async function pageUpDown() {
     }
     if (!isActive() || !data || typeof data !== "object" || Array.isArray(data) || data === snapshot) return;
     snapshot = data;
-    patchHTML(app, upDownPageHTML(snapshot), "#up-down-curve,#pp-body");
+    const winRatesOpen = $("#up-down-overall-win")?.open ?? false;
+    patchHTML(app, upDownPageHTML(snapshot), "#up-down-curve,#pp-body,#up-down-calendar");
+    $("#up-down-overall-win").open = winRatesOpen;
+    renderCalendar();
     bindTradeTabs(render);
     render();
     if (!series) {
