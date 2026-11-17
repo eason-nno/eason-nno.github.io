@@ -1535,24 +1535,36 @@ function trainingMetricsHTML(data, contracts) {
 
 function upDownForwardHTML(validation) {
   const data = validation || {};
+  const comparison = (models, showRisk = false) => {
+    const rows = models.map(([name, metric]) => {
+      const net = Number.isFinite(metric?.pnl)
+        ? `${metric.pnl > 0 ? "+" : ""}${fmtPrice(metric.pnl, 2)} USDT<small>・${trainingCount(metric.trades)} 筆</small>` : "—";
+      const risk = showRisk ? `<td class="num">${trainingPct(metric?.trade_win_rate, 1)}</td>` +
+        `<td class="num">${Number.isFinite(metric?.max_drawdown) ? fmtPrice(metric.max_drawdown, 2) : "—"}</td>` : "";
+      return `<tr><th scope="row">${name}</th><td class="num">${trainingPct(metric?.accuracy, 1)}</td>
+        <td class="num">${trainingScore(metric?.brier)}</td><td class="num">${net}</td>${risk}</tr>`;
+    }).join("");
+    return `<table class="tbl training-comparison"><thead><tr><th scope="col">模型</th><th scope="col">方向命中</th>
+      <th scope="col">Brier</th><th scope="col">費後損益</th>${showRisk
+        ? '<th scope="col">交易勝率</th><th scope="col">最大回撤<br><small>USDT</small></th>' : ""}
+      </tr></thead><tbody>${rows}</tbody></table>`;
+  };
   const cards = Array.from(UP_DOWN_PERIODS, ([minutes, label]) => {
     const period = data.periods?.[minutes];
     if (!period) return `<article class="training-period"><h3>${label}</h3><p class="training-meta">等待首批資料</p></article>`;
     const status = period.review_ready ? "可評估是否採用" : period.trained_rounds ? "前瞻驗證中" : "收集訓練樣本";
-    const rows = [["簡單模型", period.simple], ["LightGBM", period.lightgbm]].map(([name, metric]) => {
-      const net = Number.isFinite(metric?.pnl)
-        ? `${metric.pnl > 0 ? "+" : ""}${fmtPrice(metric.pnl, 2)} USDT<small>・${trainingCount(metric.trades)} 筆</small>` : "—";
-      return `<tr><th scope="row">${name}</th><td class="num">${trainingPct(metric?.accuracy, 1)}</td>
-        <td class="num">${trainingScore(metric?.brier)}</td><td class="num">${net}</td></tr>`;
-    }).join("");
+    const policy = period.policy;
     return `<article class="training-period" data-forward-minutes="${minutes}">
       <div class="training-period-head"><h3>${label}</h3><span class="pill ${period.review_ready ? "low" : "gray"}">${status}</span></div>
       <p class="training-meta">有效快照 ${trainingCount(period.valid)}／${trainingCount(period.samples)} 筆・已記錄 ${trainingCount(period.recorded_rounds)} 場</p>
       <p class="training-meta">${period.trained_rounds
         ? `配對已結算 ${trainingCount(period.paired_rounds)}／${data.min_rounds} 場・${(Math.floor(period.days * 10) / 10).toFixed(1)}／${data.min_days} 天`
         : `累積可訓練 ${trainingCount(period.warmup_rounds)}／${data.min_train} 場`}</p>
-      <table class="tbl training-comparison"><thead><tr><th scope="col">模型</th><th scope="col">方向命中</th>
-        <th scope="col">Brier</th><th scope="col">費後損益</th></tr></thead><tbody>${rows}</tbody></table>
+      ${comparison([["簡單模型", period.simple], ["LightGBM", period.lightgbm]])}
+      ${policy ? `<details class="training-compare"><summary>盤口與保守策略・${policy.review_ready ? "樣本達標" : "未採用"}</summary>
+        <p class="training-meta">新場次已結算 ${trainingCount(policy.rounds)}／${data.min_rounds} 場・${(Math.floor(policy.days * 10) / 10).toFixed(1)}／${data.min_days} 天</p>
+        ${comparison([["盤口基準", policy.market], ["簡單模型", policy.simple], ["保守策略", policy.conservative]], true)}
+        </details>` : ""}
     </article>`;
   }).join("");
   return `<section class="card training-section"><div class="card-h"><h2>${ICON.bars}漲跌合約前瞻驗證</h2>
