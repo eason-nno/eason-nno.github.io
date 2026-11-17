@@ -67,17 +67,39 @@ function strategyLessonsHTML(rules) {
       ${esc(rule.condition)}<br>${esc(rule.adjustment)}</p>`).join("") : '<p class="note">等待同類已結算成交累積。</p>'}</details>`;
 }
 
+function invalidationRiskText(risk) {
+  if (!risk) return null;
+  if (risk.status !== "ready") {
+    return {missing_plan: "缺少原進場失效計畫", stale_quotes: "行情未齊或已過期"}[risk.status] || "資料不足";
+  }
+  const fraction = Number.isFinite(risk.loss_pct_equity) ? `${fmtPrice(risk.loss_pct_equity, 4)}%` : "資料不足";
+  return `失效價 ${fmtPrice(risk.invalidation_price)}・${risk.confirmation_frame} 收線・費後 ${fmtPrice(risk.invalidation_net_usdc, 4)} USDC・虧損占淨值 ${fraction}`;
+}
+
 function strategyReportBody(report) {
   const decision = report.decision || {};
   const exit = decision.reviewed_market_exit;
   const review = decision.exit_review;
   const entry = decision.trade_plan;
   const held = decision.plan_check;
+  const risk = decision.reviewed_invalidation_risk;
+  const proposedRisk = decision.proposed_invalidation_risk;
+  const reportUpdate = decision.report_update || report.report_update;
+  const cycleNet = risk?.market_net_usdc ?? exit?.cycle_net_usdc;
+  const holdChange = Number.isFinite(risk?.hold_change_usdc) ? [
+    `${fmtPrice(risk.hold_change_usdc, 4)} USDC`,
+    Number.isFinite(risk.hold_change_pct_equity) ? `占淨值 ${fmtPrice(risk.hold_change_pct_equity, 4)}%` : null,
+  ].filter(Boolean).join("・") : null;
   const closing = decision.action === "REDUCE" || decision.action === "CLOSE";
   const fields = [
     ...tradeMarketAnalysisFields(report.market_analysis),
     ["現價全平估計（USDC）", Number.isFinite(exit?.net_usdc) ? fmtPrice(exit.net_usdc, 4) : null],
-    ["整輪費後估計（USDC）", Number.isFinite(exit?.cycle_net_usdc) ? fmtPrice(exit.cycle_net_usdc, 4) : null],
+    ["整輪費後估計（USDC）", Number.isFinite(cycleNet) ? fmtPrice(cycleNet, 4) : null],
+    ["原失效價費後試算", invalidationRiskText(risk)],
+    ["續抱至失效價損益變化", holdChange],
+    ["開倉／加倉後費後試算", invalidationRiskText(proposedRisk)],
+    ["試算總部位", Number.isFinite(proposedRisk?.total_qty) ?
+      `${fmtPrice(proposedRisk.total_qty, 6).replace(/0+$/, "").replace(/\.$/, "")} ${baseOf(report.symbol)}・均價 ${fmtPrice(proposedRisk.avg_price)}・${formatLeverage(proposedRisk.effective_leverage)}` : null],
     ["整輪回本價", Number.isFinite(exit?.break_even_price) ? fmtPrice(exit.break_even_price) : null],
     ["續抱評估", review?.hold_outlook], ["限價出場評估", review?.limit_plan],
     ["進場計畫", entry ? `${entry.confirmation_frame}・區間 ${fmtPrice(entry.zone_low)}–${fmtPrice(entry.zone_high)}・緩衝 ${fmtPrice(entry.break_buffer)}・目標 ${fmtPrice(entry.target_price)}` : null],
@@ -85,6 +107,8 @@ function strategyReportBody(report) {
     ["模型調整", decision.model_adjustment],
     ["風險要求立即出場", review ? `${review.risk_exit_required ? "是" : "否"}・${review.risk_reason}` : null],
     ["本次評估", decision.reason], ["執行結果", report.reason], ["風險評估", decision.risk_plan],
+    ["換稿補評", reportUpdate && Number.isFinite(reportUpdate.elapsed_seconds)
+      ? `同一標的的研究報告已更新・耗時 ${fmtPrice(reportUpdate.elapsed_seconds, 1)} 秒` : null],
     ["反證", decision.counter_evidence], ["前次調整", decision.review_adjustment],
     ["下次檢查", decision.next_review_trigger],
   ];
