@@ -1,0 +1,1813 @@
+<!doctype html><html lang='zh-Hant'><meta charset='utf-8'><title>easonAgents</title><style>body{font-family:'Noto Sans CJK TC','Noto Sans TC','Microsoft JhengHei',sans-serif;color:#1b2433;font-size:12.5px;line-height:1.65;margin:28px 36px}
+h1{font-size:21px;border-bottom:3px solid #12b886;padding-bottom:6px}h2{font-size:16px;margin-top:26px;color:#0b7a5c;border-left:4px solid #12b886;padding-left:8px;page-break-after:avoid}
+h3{font-size:14px}table{border-collapse:collapse;margin:8px 0;width:100%}td,th{border:1px solid #cfd8e3;padding:4px 8px;text-align:left}th{background:#eef4f2}
+code{background:#eef2f7;padding:1px 4px;border-radius:3px}blockquote{color:#667;border-left:3px solid #ccc;margin-left:0;padding-left:10px}</style><body><h1>比特幣（BTCUSDC）AI 短線分析報告</h1>
+<ul>
+<li>分析時間：2026-11-19 07:00（台北）　觸發：排程　耗時：291.6 秒</li>
+<li>當時價格：62,144.50 USDC（Binance USDⓈ-M 永續）　持有週期：約 24 小時</li>
+<li>市場方向：<strong>做空</strong>　帳戶動作：WAIT　信心 61/100　觀察觸發價（未下單） 62,300.00　停損 —　停利 —</li>
+<li>模型：快速思考 <code>gpt-6-luna</code>（OpenAI 槽位 5）；深度思考 <code>gpt-6-luna</code>（OpenAI 槽位 5）</li>
+<li>金鑰分工：OpenAI 槽位 5（快速）：技術、情緒、新聞、鏈上、多頭、空頭、交易員、積極派、保守派、中立派；OpenAI 槽位 5（深度）：研究經理、投資組合經理</li>
+<li>實際使用金鑰（排程 run：預定槽位，槽位 3 備用）：情緒 槽位5×1；新聞 槽位5×1；鏈上 槽位5×1；多頭 槽位5×1；空頭 槽位5×1；研究經理 槽位5×1；交易員 槽位5×1；中立派 槽位5×1；積極派 槽位5×1；保守派 槽位5×1；投資組合經理 槽位5×1</li>
+<li>使用備用金鑰（槽位 3）的角色：無</li>
+<li>API 回報的模型版本：快速 gpt-6-luna×9；深度 gpt-6-luna×2</li>
+<li>呼叫次數（callback 計數，含失敗重試）：快速 9 次（成功 9）、深度 2 次（成功 2）；依金鑰：OpenAI 槽位 5 11 次、google 槽位 1 0 次、google 槽位 2 0 次</li>
+</ul>
+<h2>前次報告與實際結果回顧</h2>
+<ul>
+<li>前次報告：20261119-065002-BTCUSDC-b075；完成時間 2026-11-19T06:55:10+08:00</li>
+<li>回顧狀態：available；僅作階段檢討，不提前判定整份報告成敗</li>
+<li>已觀測區間：最高 None／最低 None；僅列已保存且完全落於回顧區間的已收線K；不保證完整區間，觸及不等於成交</li>
+<li>各角色將此回顧與本次資料共同評估，延續或修正理由見下列報告。</li>
+</ul>
+<h2>本輪提供的 BTC 研究記憶</h2>
+<ul>
+<li>經驗 1｜20 段幣安 BTCUSDC 相似市況。1 小時收高 9 筆、收低 11 筆，收盤變動中位 -0.06%、相對基準的區間低／高中位 -0.30%／+0.39%；4 小時收高 12 筆、收低 8 筆，收盤變動中位 +0.25%、相對基準的區間低／高中位 -0.63%／+0.60%；24 小時收高 14 筆、收低 6 筆，收盤變動中位 +0.36%、相對基準的區間低／高中位 -1.14%／+1.19%。</li>
+<li>經驗 2｜同為下行市況的團隊做空觀點，24 小時支持 9、反例 1、持平 0、逆向波動超過建議風險距離 2/3。可參考。案例 20261118-050000-BTCUSDC-811b、20261115-223015-BTCUSDC-5bcd。</li>
+<li>經驗 3｜同類市況的 AI 團隊模擬帳戶：未成交取消 1 筆，已平倉 3 筆（計入資金費與已付手續費，淨盈 3、淨虧 0）。成交案例作為執行參考，依本輪條件重查。 案例 20261115-170000-BTCUSDC-c7fe、20261109-080000-BTCUSDC-0eb3。</li>
+</ul>
+<h2>BTCUSDT LightGBM 市場模型</h2>
+<table>
+<thead>
+<tr>
+<th>週期</th>
+<th>收線基準（台北）</th>
+<th style="text-align:right">收高機率</th>
+<th style="text-align:right">最大漲／跌幅 P80</th>
+<th style="text-align:right">機率分數</th>
+<th>模型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5 分鐘</td>
+<td>—</td>
+<td style="text-align:right">—</td>
+<td style="text-align:right">—</td>
+<td style="text-align:right">—</td>
+<td>預測時段已結束。</td>
+</tr>
+<tr>
+<td>15 分鐘</td>
+<td>—</td>
+<td style="text-align:right">—</td>
+<td style="text-align:right">—</td>
+<td style="text-align:right">—</td>
+<td>預測時段已結束。</td>
+</tr>
+<tr>
+<td>1 小時</td>
+<td>—</td>
+<td style="text-align:right">—</td>
+<td style="text-align:right">—</td>
+<td style="text-align:right">—</td>
+<td>預測時段已結束。</td>
+</tr>
+<tr>
+<td>4 小時</td>
+<td>11-19 06:00・62,326.00</td>
+<td style="text-align:right">58.3%</td>
+<td style="text-align:right">1.27%／1.44%</td>
+<td style="text-align:right">50.13%</td>
+<td><code>btc-multisource-native48-plus36-20261118</code> 前瞻觀察</td>
+</tr>
+<tr>
+<td>24 小時</td>
+<td>11-19 06:00・62,326.00</td>
+<td style="text-align:right">50.9%</td>
+<td style="text-align:right">3.43%／4.19%</td>
+<td style="text-align:right">49.75%</td>
+<td><code>btc-multisource-native48-plus36-20261118</code> 前瞻觀察</td>
+</tr>
+<tr>
+<td>週 K</td>
+<td>11-16 08:00・65,309.80</td>
+<td style="text-align:right">64.8%</td>
+<td style="text-align:right">10.29%／9.46%</td>
+<td style="text-align:right">49.39%</td>
+<td><code>btc-multisource-native48-plus36-20261118</code> 前瞻觀察</td>
+</tr>
+</tbody>
+</table>
+<h2>近 30 天角色複盤</h2>
+<p>市場方向從報告完成後第一個整點開始比對 24 小時收盤。方向欄只統計有結構化方向的案例。</p>
+<table>
+<thead>
+<tr>
+<th>研究角色</th>
+<th style="text-align:right">已核對案例</th>
+<th style="text-align:right">方向吻合／可評估</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>技術</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">187／265</td>
+</tr>
+<tr>
+<td>情緒</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">180／263</td>
+</tr>
+<tr>
+<td>新聞</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">179／261</td>
+</tr>
+<tr>
+<td>鏈上</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">179／262</td>
+</tr>
+<tr>
+<td>多頭</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">—</td>
+</tr>
+<tr>
+<td>空頭</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">—</td>
+</tr>
+<tr>
+<td>研究經理</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">—</td>
+</tr>
+<tr>
+<td>交易員</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">131／188</td>
+</tr>
+<tr>
+<td>積極派</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">—</td>
+</tr>
+<tr>
+<td>保守派</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">—</td>
+</tr>
+<tr>
+<td>中立派</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">—</td>
+</tr>
+<tr>
+<td>投資組合經理</td>
+<td style="text-align:right">265</td>
+<td style="text-align:right">169／251</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>策略測試經理・測試1號：已平倉 11 筆，獲利 11 筆，淨損益 +226.17 USDC。</li>
+<li>策略測試經理・測試2號：已平倉 58 筆，獲利 33 筆，淨損益 +258.99 USDC。</li>
+<li>策略測試經理・測試3號：已平倉 17 筆，獲利 4 筆，淨損益 -2.73 USDC。</li>
+</ul>
+<h2>投資組合經理｜最終決策</h2>
+<p><strong>原版持倉動作</strong>：觀望（WAIT）</p>
+<p><strong>市場方向</strong>：做空（SHORT）　<strong>信心</strong>：61/100　<strong>風險</strong>：高</p>
+<table>
+<thead>
+<tr>
+<th>觀察觸發價（未下單）</th>
+<th>停損</th>
+<th>停利</th>
+<th>部位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>62,300.00</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>部位建議</strong>：目前不開倉、不使用槓桿；觸發條件達成亦須以新快照重審後才評估部位。</p>
+<h3>摘要</h3>
+<p>方向判斷偏空，但 original 帳戶本輪採 WAIT：BTCUSDC 07:00 已收線的 5m、15m、1h 收盤均低於各自 MA20，弱勢仍在；惟價格貼近 61,950 低點且 RSI 偏低，不追空。07:04:13 最近成交 62,308.20 只代表盤中報價，尚無後續 5m 收線確認回抽拒絕；保守風控亦未核准原候選停損、目標與部位組合。</p>
+<h3>決策理由</h3>
+<p>**最終裁決與帳戶動作：**市場方向選 SHORT（偏空），但原版帳戶 action 為 WAIT，不新增曝險。帳戶快照時間 2026-11-19 07:00:00.544（台北），07:04:15.374 核對時年齡 254.83 秒、狀態 current，允許動作為 WAIT／OPEN；帳戶空手，權益估值 9,886.31 USDC，無本標的持倉可續抱、平倉或反手。故本輪不下單、不產生交易費或資金費。</p>
+<p>**方向證據與反證：**本輪 BTCUSDC 已收線資料完整且連續。07:00 的 5m 收 62,144.6，低於 MA20 62,312.165；15m 同收 62,144.6，低於 MA20 62,592.395；1h 同收 62,144.6，低於 MA20 63,646.785。1h RSI 26.58、15m RSI 31.86，趨勢弱但短線超賣，反彈／軋空風險提高。5m 於 06:55 曾由低點 61,988.2 反彈收 62,239.9，07:00 又收低至 62,144.6、最低 61,950；低點仍未由後續收線確認有效跌破，故不把續跌視為已確認突破。</p>
+<p>**觸發與下單判斷：**交易員提出的回抽拒絕構想是先觸及 62,300–62,400，再由 5m 收於 62,300 下方；07:04:13 最近成交 62,308.20 雖進入候選區附近，但不是已收線訊號，且距 07:00 最新完整K線後的確認尚未提供。條件未達成，不能把盤中報價當成觸發或成交。Aggressive Analyst 支持保留觸發後重審；Conservative Analyst 明確不核准原 62,300／62,650／61,680、60% 部位組合，並質疑停損過近及目標路徑；Neutral Analyst 亦要求觸發後用新快照重核。因停損、目標及部位沒有形成完整且共同核准的候選交易，entry_plan 留空，不硬湊一筆條件單。</p>
+<p>**價位與風險核對：**交易員原候選 62,300 進場、62,650 停損、61,680 停利，停損距離 350、目標距離 620；以 15m ATR(14) 250.02、1h ATR(14) 527.78 衡量，停損約 1.40 倍 15m ATR，目標約 1.18 倍 1h ATR。61,680 低於本輪 61,950 低點，必須先破位才可能到達；不能視為無阻礙的 24 小時目標。風控指出 62,650 僅略高於 15m MA20 與近期反彈高點，可能被一般反彈掃到；替代區 62,750–62,800 仍需新行情確認，若停損拉遠，部位和費後風險報酬必須重算。風控亦指出原提案 60% 部位下費後 R/R 約 1.46 的概算可供參考，但獲利金額曾混淆每 BTC 與實際帳戶數量；按約 5,932 USDC 名目規模，不能照搬每 BTC 數字。缺乏候選價位深度，滑價未知；未來資金費也不確定，因此不以靜態費用估算取代新審核。</p>
+<p>**前次回顧：**前次報告 20261119-065002-BTCUSDC-b075 於 06:55:10 完成，方向 SHORT、action WAIT，沒有本帳戶實際成交。其後 07:00 收線仍在多週期 MA20 下方，延續偏空結構；但報告後時間很短，24 小時觀點未成熟，價格走低不算帳戶獲利。previous_review 列出的兩筆 conditional 回放，一筆估算淨虧 48.9204 USDC、一筆估算淨盈 65.9552 USDC，另有一筆未成交；皆非本輪實際帳戶損益或成交，不能挪作本輪風險預算。</p>
+<p>**資料限制與經驗檢查：**20 段相似市況樣本中，24h 有 14 段收高、中位數 +0.36%，足以降低空方信心但不是本輪反彈機率；同類下行市況空方歷史多獲支持，但曾出現逆向波動超過建議風險距離。BTCUSDT 模型 24h 方向 50.93%、無前向評分，且標的不是 BTCUSDC，不作本輪方向優勢證據。經驗檢查：相似市況偏向正報酬與曾有超風險距離逆向波動，使我維持偏空方向但拒絕追空，並要求觸發後重新核算部位及保護。</p>
+<h3>看多因素</h3>
+<ul>
+<li>07:00 的 1h RSI 為 26.58、15m RSI 為 31.86，短線超賣提高反彈風險，但不是反轉確認。</li>
+<li>5m 06:55 收 62,239.9，較該根低點 61,988.2 明顯反彈；07:00 才再回落，顯示低位仍有買盤反應。</li>
+<li>本輪 61,950 低點尚未有後續已收線資料確認有效跌破，近端支撐仍可能引發回補。</li>
+<li>20 段相似市況中 24 小時有 14 段收高，中位數 +0.36%；屬歷史反證，不能當成本輪機率。</li>
+</ul>
+<h3>看空因素</h3>
+<ul>
+<li>07:00 的 5m 收盤 62,144.6 低於 MA20 62,312.165，且 MACD histogram 為 -5.826。</li>
+<li>07:00 的 15m 收盤 62,144.6 低於 MA20 62,592.395；該根成交量 779.691 BTC，仍呈弱勢收線。</li>
+<li>07:00 的 1h 收盤 62,144.6 低於 MA20 63,646.785，1h MACD histogram 為 -167.208。</li>
+<li>24 小時主動賣出 1,596.3M USDC 高於主動買入 1,552.0M，買賣比 0.972；賣方僅略占優勢，並非單邊證據。</li>
+<li>市場研究提及近期 ETF 流出約 2.4 億美元及偏弱宏觀／供給背景；其未證明未來 24 小時仍有同等賣壓，故只作背景。</li>
+</ul>
+<h3>失效條件</h3>
+<p>若 5m 已收線先觸及 62,300–62,400 區間，之後收於 62,300 下方，才重啟空方完整研究；須以新快照重新核驗，不自動下單。若 15m 收盤站上本輪 MA20 62,592.395，撤銷空方候選並重評；若其後再收復 62,745–62,800 壓力區，才重新研究是否轉 LONG，不自動反手。</p>
+<h2>交易員｜交易計畫</h2>
+<p><strong>原版持倉動作</strong>：觀望（WAIT）</p>
+<p><strong>市場方向</strong>：觀望（WAIT）
+<strong>觀察觸發價（未下單）</strong>：62,300.00　<strong>停損</strong>：—　<strong>停利</strong>：—
+<strong>部位</strong>：—　<strong>信心</strong>：58/100</p>
+<p>本輪只對原版 BTCUSDC 空手帳戶作決定：snapshot_status=current，允許 WAIT／OPEN；選 WAIT，沒有實際成交或持倉。市場判斷仍略偏空，但不在低位追空。current_round_facts 的最新完整收線為07:00：5m收62144.6（MA20 62312.165、低點61950），15m收62144.6（MA20 62592.395），1h收62144.6（MA20 63646.785）；短線偏弱，但低點未確認有效跌破，RSI 15m 31.86、1h 26.58，反彈／軋空風險仍高。檢查時最新提供的最近成交為07:02:46的62292.50，這不是07:00後的完整K線確認，且價格已靠近候選回抽區，不足以確認拒絕訊號，故不市價開空。前次報告20261119-065002-BTCUSDC-b075（06:55:10）同樣偏空但WAIT；本輪新收線延續均線下方弱勢，未改變方向判讀；前次候選未成交、下跌不構成本帳戶獲利。previous_review所列歷史候選回放中兩筆估算平倉、一筆未成交，均非本帳戶本輪實際交易結果。四份報告一致指出低位不宜追空；20段相似行情24小時14段收高、中位+0.36%，以及BTCUSDT模型24h方向50.93%且無前向評分，均限制信心。僅保留條件式短空研究候選：未來2根5m內先觸及62300–62400，再收於62300下方才重啟審查；在此之前不下單、不假設候選價已成交。</p>
+<h3>條件追蹤候選計畫（非已下單）</h3>
+<ul>
+<li>候選方向：做空</li>
+<li>候選進場 62,300.00／停損 62,650.00／停利 61,680.00；部位 60%</li>
+<li>自本輪快照起有效 120 分鐘；失效價 62,650.00</li>
+<li>全部條件達成後，以新快照重新執行完整團隊研究：
+<ul>
+<li>5m，觸及區間後向下收線離開 62,300.00–62,400.00（2 根已收線內）</li>
+</ul>
+</li>
+<li>理由：條件式偏空候選，並非當下掛單：fresh、continuous 的 BTCUSDC 5m/15m/1h 最新收線均低於各自 MA20；07:00 5m收 62144.6、低點 61950，15m與1h RSI分別31.86及26.58，趨勢偏空但接近支撐且超賣，故不追空。僅待未來2根已收線5m先觸及62300–62400後收低於62300，才重啟完整研究；候選限價62300、失效停損62650在15m MA20 62592.395上方，參照15m ATR(14)=250.02及1h ATR(14)=527.78，停損置於結構反證區而非按短持有期機械縮窄。目標61680低於61950低點，需支撐破位方可達，24小時有波幅空間但不保證。按入場maker 0.02%、出場taker 0.05%估算，停利毛利620、往返費約43.6，淨利約576；停損毛損350、往返費約43.7，淨損約394，費後R/R約1.46。60%名目部位約5932 USDC，預估停損及費用約37.5 USDC（權益約0.38%），未計滑價及未知資金費。經驗檢查：20段相似市況24小時有14段收高、中位+0.36%，降低空方信心；下行市況空方過往多獲支持但曾有超過建議風險距離的逆向波動，因此只考慮回抽確認及縮小曝險。</li>
+</ul>
+<p>FINAL TRANSACTION PROPOSAL: <strong>HOLD</strong></p>
+<h2>研究經理｜研究結論</h2>
+<p><strong>Recommendation</strong>: Underweight</p>
+<p><strong>Rationale</strong>: 24小時略偏空：本輪最新已收線的5分鐘K（07:00台北）收於62,144.6，低於MA20 62,312.2；15分鐘收於62,144.6，低於MA20 62,592.4；1小時收於62,144.6，低於MA20 63,646.8，且1小時RSI 26.58。6:55反彈至62,239.9後，07:00再度走弱並下探61,950，未見收復均線或確認反轉，故空方論點勝出，但只宜等反彈做空而非現價追空。最強反證是61,950附近尚未收線確認跌破、RSI超賣且急跌後反彈風險高；20段相似市況24小時14段收高、中位數+0.36%，而BTCUSDT模型24小時方向僅50.9%、無前向驗證，均限制信心。經驗檢查：相似下行市況空方經驗多獲支持，但曾有逆向波動超過建議風險距離；故縮小名目曝險並設硬停損，歷史樣本不當成本輪機率。前次報告20261119-065002-BTCUSDC-b075於06:55:10為SHORT/WAIT，未有實際成交；本輪收線結構延續偏空，但回抽條件仍未觸發，報價低於候選價不等於成交或帳戶獲利。帳戶快照於07:00:00.544，核對時年齡143秒、current、空手，允許OPEN。</p>
+<p><strong>Strategic Actions</strong>: original帳戶僅考慮BTCUSDC空單：在簿上掛賣出限價62,300 USDC，最多等2小時，未成交取消且不追價；若15分鐘收盤站上62,592.4，撤銷未成交候選並重評。成交後硬停損62,650、停利61,680；若兩者均未觸及，持有滿24小時平倉，不加倉。名目上限為總權益100%（約9,886 USDC，按62,300計約0.159 BTC），低於10倍槓桿可用上限；按掛單進場、停損吃單估算，價格損失約55.7 USDC、往返手續費約7.0 USDC，合計約62.7 USDC（權益約0.63%，未計滑價及未知未來資金費），不超過帳戶1%風險政策。資金費率未來變化未知，不預先計為收益。</p>
+<h2>技術分析師</h2>
+<p><strong>結論</strong>：多週期偏空，現價貼近短線支撐，尚未確認跌破。<br />
+<strong>多空分數</strong>：22</p>
+<h3>趨勢</h3>
+<p>日線、4小時、1小時、15分鐘及5分鐘皆偏空，反彈尚未扭轉結構。</p>
+<h3>位置</h3>
+<p>現價 <strong>62,251.6</strong>，在最近支撐 <strong>62,231.2–62,250.0</strong> 上方；下方下一帶 <strong>62,137.2–62,200.0</strong>。再下看 <strong>61,919.7</strong>，以及 <strong>61,832.1–61,861.3</strong>。上方依序為壓力 <strong>62,361–62,400、62,450–62,456、62,592–62,646、62,745.2–62,799.9</strong>。BTCUSDT週線背景位 <strong>64,918.2–65,222.3</strong>，只作長期參考，不作BTCUSDC破位判定。</p>
+<h3>確認條件</h3>
+<ul>
+<li><strong>已確認下破</strong>：BTCUSDC 1小時收於 <strong>62,592–62,646</strong> 下方，最新收盤 <strong>62,251.6</strong>；證據時間 <strong>2026-11-19 06:00（台北）</strong>。但4小時收盤 <strong>62,652.2</strong> 仍在該帶上方，4小時確認尚未成立。</li>
+<li><strong>仍待確認</strong>：BTCUSDC 1小時收於 <strong>62,361–62,400、62,450–62,456</strong> 下方，最新收盤 <strong>62,251.6</strong>，證據時間同上；短線已有收盤在帶下，仍需後續收線延續。<strong>62,745.2–62,799.9</strong> 亦在現價上方，未收復。</li>
+<li><strong>支撐／反證</strong>：BTCUSDC 5分鐘 <strong>62,231.2–62,250.0</strong>，最新收盤 <strong>62,251.6</strong>（06:00），狀態收復；此前收於 <strong>62,227.5</strong>（05:50），尚非持續確認跌破。BTCUSDC 15分鐘 <strong>62,137.2–62,200.0</strong>，最新收盤 <strong>62,251.6</strong>（06:00）、最低 <strong>62,203.1</strong>，暫守；收線跌入該帶才轉弱，守住並收復上方壓力則反證空方。</li>
+</ul>
+<h3>數據摘要</h3>
+<table>
+<thead>
+<tr>
+<th>BTCUSDC週期</th>
+<th>最新收線時間（台北）</th>
+<th style="text-align:right">收盤</th>
+<th style="text-align:right">14 期平均真實波幅</th>
+<th>方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>日線</td>
+<td>11-18 08:00</td>
+<td style="text-align:right">64,860.0</td>
+<td style="text-align:right">3,063.55</td>
+<td>偏空</td>
+</tr>
+<tr>
+<td>4小時</td>
+<td>11-19 04:00</td>
+<td style="text-align:right">62,652.2</td>
+<td style="text-align:right">1,129.04</td>
+<td>偏空</td>
+</tr>
+<tr>
+<td>1小時／15分／5分</td>
+<td>11-19 06:00</td>
+<td style="text-align:right">62,251.6</td>
+<td style="text-align:right">521.73／216.27／126.34</td>
+<td>偏空</td>
+</tr>
+</tbody>
+</table>
+<p>**資料截止：as_of_taipei 2026-11-19 06:00（台北）。**未提供BTCUSDC週線；週線背景僅採BTCUSDT關鍵位。</p>
+<h2>情緒分析師</h2>
+<p><strong>結論</strong>：情緒偏空續勢，多殺多風險高於軋空。<br />
+<strong>多空分數</strong>：27</p>
+<h3>情緒與槓桿擁擠</h3>
+<p>全市場恐懼貪婪指數 11 月 18 日為 <strong>11（極度恐懼）</strong>，屬背景情緒，不能單獨當作立即反轉訊號。Binance BTCUSDC 多空帳戶比從約 24 小時前 <strong>2.79</strong> 升至 <strong>3.19</strong>；同期價格走弱，表示多頭帳戶數偏多，若低點續破，可能增加多殺多壓力。但這是<strong>帳戶數比，不是部位大小或資金淨流入</strong>。</p>
+<p>本期資金費率 <strong>+0.0087%／8 小時</strong>，多方付費；已列出的近期費率平均 <strong>+0.0026%</strong>，正值但不算極端。若費率維持不變，24 小時累計約 <strong>0.0261%</strong>，僅為估算。整體判斷是<strong>多頭有些擁擠，尚無證據確認槓桿極端</strong>；缺少未平倉量及完整清算資料，無法量化擁擠規模。</p>
+<h3>24 小時軋空／多殺多風險</h3>
+<p>24 小時主動買入 <strong>1,559.2M</strong>、主動賣出 <strong>1,607.9M USDC</strong>，買賣比 <strong>0.970</strong>，賣方略占優勢，支持偏空情緒作為<strong>順勢訊號</strong>，而不是僅因極度恐懼就反向做多。</p>
+<p>本輪已收線行情也偏弱：5 分鐘 K 線於 <strong>07:00</strong> 收 <strong>62,144.6</strong>，低於 MA20 <strong>62,312.2</strong>，最低 <strong>61,950</strong>；15 分鐘與 1 小時收盤分別低於各自 MA20，且 RSI 約 <strong>31.9</strong>、<strong>26.6</strong>。多頭若守不住 <strong>61,950</strong> 附近，可能引發進一步多殺多；但低 RSI、急跌後仍有短線反彈空間，若價格收復短週期均線並延續反彈，空頭回補可能帶來軋空。故<strong>多殺多風險較高，但軋空風險仍不可忽略</strong>，不宜把方向判斷當成確定性。</p>
+<h3>前次檢視與本輪處置</h3>
+<p>前次報告 <strong>20261119-065002-BTCUSDC-b075</strong> 於 <strong>06:55</strong> 完成，24 小時觀點尚未成熟，且回顧沒有本帳戶實際成交。本輪延續其偏空判斷的依據，是 <strong>07:00</strong> 收線再次跌回 5 分鐘 MA20 下方，且 15 分鐘、1 小時結構仍弱；但本輪資料也顯示急跌後曾反彈，低位可能劇烈震盪，不能因此追空。</p>
+<p><strong>操作：Hold／觀望（WAIT），不新增倉位。</strong> original 帳戶目前空手，快照狀態 current，權益估值 <strong>9,886.31 USDC</strong>。偏空是情緒與方向判讀，不等於必須開空；極度恐懼與超賣是反證，且缺少 OI／完整清算資料，宜等待價格確認。</p>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th style="text-align:right">本輪數據</th>
+<th>解讀</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>恐懼貪婪指數（11/18）</td>
+<td style="text-align:right">11，極度恐懼</td>
+<td>背景偏空，非即時反轉訊號</td>
+</tr>
+<tr>
+<td>資金費率</td>
+<td style="text-align:right">+0.0087%／8 小時</td>
+<td>多方付費，擁擠略偏多方</td>
+</tr>
+<tr>
+<td>多空帳戶比</td>
+<td style="text-align:right">3.19；約 24 小時前 2.79</td>
+<td>多頭帳戶數偏多，非部位量</td>
+</tr>
+<tr>
+<td>24 小時主動買／賣</td>
+<td style="text-align:right">1,559.2M／1,607.9M USDC</td>
+<td>賣方略占優勢</td>
+</tr>
+<tr>
+<td>BTCUSDC 最新收盤</td>
+<td style="text-align:right">62,144.6；07:00 台北</td>
+<td>低於 5m MA20；低點 61,950</td>
+</tr>
+<tr>
+<td>風險排序</td>
+<td style="text-align:right">多殺多高於軋空</td>
+<td>非極端槓桿判定，兩方向均有尾部風險</td>
+</tr>
+</tbody>
+</table>
+<h2>加密新聞分析師</h2>
+<p><strong>結論</strong>：短線偏空但貼近支撐，原版帳戶觀望<br />
+<strong>多空分數</strong>：28</p>
+<h2>24 小時判斷</h2>
+<p><strong>價格影響：利空；操作評等：Underweight（方向偏空），原版帳戶動作：WAIT，不開倉。</strong><br />
+短線走勢與新聞背景偏弱，但 BTC 剛在 07:00 收於 62,144.6 USDC，距本輪低點 61,950 不遠；1 小時 RSI 為 26.58，短線有超賣與反彈風險。此處追空的風險報酬不佳，也沒有足夠反轉證據支持做多。</p>
+<h2>已發生事件與背景</h2>
+<h3>新聞與市場</h3>
+<ul>
+<li><strong>ETF 資金流出、熊市判讀｜偏空，但不等於未來 24 小時必然延續。</strong> 報導稱 BTC ETF 流出約 2.4 億美元；CryptoQuant 指 BTC 跌破其採用的 200 日、365 日均線。多家媒體報導相近資料，視為同一組背景，不重複計權。</li>
+<li><strong>礦工售幣｜供給壓力背景，售出期間與規模不可直接外推。</strong> 報導提及 MARA 在 9 月後售出 13,597 BTC、Riot 截至 9 月售出 20,264 BTC，並稱售幣與還債及 AI 基建相關；MARA 另公布 1.85 億美元債務融資。多篇報導內容重疊，不視為多個獨立賣壓來源，也不能據此推定本持有期仍有相同規模賣單。</li>
+<li><strong>Fed 鷹派談話｜偏空風險，並非已決定升息。</strong> Waller 再度主張 Fed 可考慮 12 月升息 50 個基點；這是官員表態，不是政策決議，且所涉會議不在本次 24 小時持有期內。</li>
+<li><strong>Anthropic IPO 與 BTC 下跌的因果尚未確認。</strong> 報導提到 IPO 定價與 BTC 走弱，但分析人士質疑 IPO 抽走加密市場流動性的說法；不把相關性當成已證實因果。Nvidia 財報利好與股市走強已發生，但 BTC 未能同步轉強，對 BTC 的短線支撐有限。</li>
+<li><strong>反向觀點與供給傳聞需降權。</strong> K33 分析師稱六週下跌後可能出現局部底部，但同篇提到選擇權交易者仍尋求下行保護；屬市場觀點，不是底部確認。德國法官提出以交出大部分 BTC 換取撤案的方案，報導提及約 4 萬 BTC，但尚非已完成移轉；不能當成本日確定賣壓。</li>
+<li><strong>Ledger 調查｜已確認裝置遭竄改，不等於 BTC 網路遭攻擊。</strong> Ledger 稱在柏林確認遭竄改的硬體錢包，並調查杜拜疑似裝置；對加密市場情緒可能略偏負面，但資料沒有指出 Bitcoin 協議或網路受損。</li>
+<li><strong>監管背景偏中性。</strong> 另有參議員要求財政部在 GENIUS Act 落實時平等對待穩定幣發行者；屬穩定幣監管議題，未見對 BTC 的直接新規或即時影響。</li>
+</ul>
+<h3>本輪行情核對</h3>
+<ul>
+<li>最新 BTCUSDC 報價約 <strong>62,144.50 USDC</strong>；本輪已收線的 5 分鐘與 15 分鐘 K 均收於 <strong>62,144.6</strong>。</li>
+<li>07:00 的 5 分鐘收盤低於 MA20 <strong>62,312.2</strong>、MA60 <strong>62,604.9</strong>；15 分鐘收盤低於 MA20 <strong>62,592.4</strong>。1 小時最新收盤亦低於 MA20 <strong>63,646.8</strong>，RSI <strong>26.58</strong>。趨勢偏空，但 RSI 偏低提高短線反彈風險。</li>
+<li>06:50 的 5 分鐘 K 放量跌至 <strong>61,990.8</strong>，其後反彈；07:00 再探至 <strong>61,950</strong>。目前是低位拉鋸，尚未看到有力收復短週期均線。最近可觀察的低位區在 <strong>61,950–62,000</strong>；上方先看 <strong>62,312</strong>（5 分鐘 MA20）及 <strong>62,592</strong>（15 分鐘 MA20）。</li>
+<li>最新可用的 4 小時已收線 K 為 04:00，收於 <strong>62,661.1</strong>，低於當時 MA20 <strong>64,472.7</strong>；尚無本輪更新至 07:00 的 4 小時收線可確認後續變化。</li>
+<li>方向模型使用 <strong>BTCUSDT</strong>，不是 BTCUSDC；24 小時方向約 <strong>50.9%</strong>、未有前向評分，僅作輔助，不構成明確方向優勢。相似行情記憶樣本為 20 段、24 小時有 14 段收高，中位變動 <strong>+0.36%</strong>，是空方反證而非本輪預測；前輪經理文字引用的樣本統計口徑不同，因此不採其數字作機率依據。</li>
+</ul>
+<h2>前次判斷與帳戶</h2>
+<p>前次報告 <strong>20261119-065002-BTCUSDC-b075</strong> 於 06:55 完成，方向偏空但選擇 WAIT。其「低位不追空、等待較佳位置」的風控考量仍成立；本輪新增證據是 07:00 已收線行情仍在短週期均線下方，且再次接近低位，沒有形成反轉確認。</p>
+<p>前次觀察僅約 290 秒，24 小時觀點尚未成熟；前次回顧記錄無實際成交。價格由前次提及的約 62,300 下跌，不代表帳戶獲利，因為沒有成交。原版帳戶目前空手，權益估值 <strong>9,886.31 USDC</strong>；快照狀態 current、允許 WAIT／OPEN。<strong>本輪不開新倉，也不把偏空判斷當成已執行空單。</strong></p>
+<h2>24 小時內待追蹤</h2>
+<p>資料中沒有明確列出的、已排定於未來 24 小時發生的 BTC 專屬事件。可追蹤 Ledger 對杜拜疑似裝置的調查進展，以及 Anthropic IPO 相關市場反應；兩者均未提供確切後續時程。Fed 12 月升息主張不是本持有期內的已排定決策。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>本輪判斷</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>24 小時新聞影響</td>
+<td>利空，惟部分因素為背景或未證實因果</td>
+</tr>
+<tr>
+<td>技術面</td>
+<td>偏空；低位、短線超賣風險上升</td>
+</tr>
+<tr>
+<td>最新價／本輪低點</td>
+<td>62,144.50／61,950 USDC</td>
+</tr>
+<tr>
+<td>多空分數</td>
+<td>28／100</td>
+</tr>
+<tr>
+<td>評等／原版帳戶動作</td>
+<td>Underweight／WAIT</td>
+</tr>
+<tr>
+<td>已持倉／實際成交</td>
+<td>空手／無</td>
+</tr>
+</tbody>
+</table>
+<h2>鏈上 / 衍生品分析師</h2>
+<p><strong>結論</strong>：槓桿去化、走勢偏空，急跌後先觀望。
+<strong>多空分數</strong>：31</p>
+<h3>Hyperliquid BTC 清算風險</h3>
+<ul>
+<li>快照更新於 <strong>06:59:50.932</strong>，<code>stale=false</code>、樣本持倉已更新；候選 74,962、查核／有效 <strong>300/300</strong>，追蹤 221 倉、205 倉有強平價、<code>crossed_mark=0</code>。HL 標記價 <strong>$62,250</strong>；樣本受 300 地址上限及門檻限制，樣本外倉位未知。</li>
+<li>依完整 <code>chart_points</code>，下方最近為 <strong>$62,024.69</strong>：多單 <strong>57.315 BTC／1 倉</strong>，距標記價 <strong>$225（0.362%）</strong>，估值約 <strong>$3.55M</strong>；再下 <strong>$61,860.08</strong>：<strong>25.6 BTC／1 倉</strong>，距 <strong>$390（0.626%）</strong>，約 <strong>$1.58M</strong>。</li>
+<li>更下方 <strong>$61,679.27–61,684.18</strong> 合計 <strong>79 BTC／2 倉</strong>，距標記價約 <strong>$566–571（0.91%）</strong>，約 <strong>$4.87M</strong>。單倉與價帶加總，以及 <code>chart_points</code>、<code>levels</code>、<code>positions</code>，均為同源視圖，不重複相加。</li>
+<li>上方最近 <strong>$63,727.92</strong> 為空單 <strong>20 BTC／1 倉</strong>，距 <strong>$1,478（2.374%）</strong>，約 <strong>$1.27M</strong>；<strong>$65,198.93</strong> 為單一空倉 <strong>1,500 BTC／1 倉</strong>，距 <strong>$2,949（4.737%）</strong>，約 <strong>$97.80M</strong>，條件式首輪送單估計 <strong>300 BTC</strong>，不是整倉必然同時成交；其上另有 $65,282.73、$65,461.80 價點。</li>
+<li>若先跌穿 $62,024.69 並持續，才依序觀察 $61,860、約 $61,680；須有實際強平成交、收線守在價帶下及深度消耗等佐證才支持加速。可見 bid <strong>825.845 BTC</strong>、ask <strong>1,015.010 BTC</strong> 深度僅涵蓋標記價 ±0.25%，不覆蓋 $62,025 或 $63,728，故不作跨價量比較。</li>
+<li>HL 近 24 小時已觀測清算為多單 <strong>14.916 BTC／約 $0.943M</strong>、空單 0（25 筆），與持倉樣本不可相加；樣本短窗多倉淨變 <strong>+0.156 BTC</strong>、空倉 <strong>−19.188 BTC</strong>，HL OI 跨快照 <strong>+7.97 BTC</strong>，均不足證明連鎖。若倉位縮小、強平價移遠或價格快速收回，應降低風險判斷；清算價不代表必達或反轉。</li>
+</ul>
+<h3>24 小時槓桿與資金流</h3>
+<ul>
+<li>Binance BTCUSDC OI 為 <strong>23,913 BTC／約 1.486B USDC</strong>；4 小時 <strong>−1.22%</strong>、24 小時 <strong>+5.88%</strong>。近端 OI 從 01:00 的 24,337 BTC 降至 06:00 的 23,903 BTC；同期價格走弱，與短線槓桿收縮相容，但 OI 本身不分多空，也不能單憑價格與 OI 推定是多單平倉或空單增倉。此數據只涵蓋 Binance 單一 USDC 合約。</li>
+<li>OKX BTC-USDT-SWAP 近 24 小時公開事件累計為多單清算 <strong>$20.96M</strong>、空單 <strong>$5.70M</strong>，多單較多；這是 OKX 約 24 小時、3,132 筆觀測，不是全市場或 Binance 清算全量，也不代表未來清算分布。</li>
+<li>Binance 本期資金費率 <strong>+0.0087%／8 小時</strong>，多方付費；近 21 期平均 <strong>+0.0026%</strong>。標記價低於指數價，溢價 <strong>−0.0392%</strong>。正費率與負溢價、價格下跌並存，顯示多方仍付費但不等於極端擁擠；它們也不能單獨確認後續方向。</li>
+</ul>
+<h3>價格結構與反證</h3>
+<ul>
+<li>BTCUSDC 最新 <strong>07:00</strong> 收線為 <strong>62,144.6</strong>；5 分鐘低點 <strong>61,950</strong>、收盤仍低於 MA20 <strong>62,312.2</strong>，未確認收破低點。06:50 曾放量 <strong>460.287 BTC</strong> 下探至 61,990.8，06:55 收回 62,239.9，之後 07:00 再收低，反映賣壓未解除、但低位亦有反彈。</li>
+<li>15 分鐘 07:00 收於 <strong>62,144.6</strong>，低於 MA20 <strong>62,592.4</strong>；1 小時 07:00 收於 <strong>62,144.6</strong>，低於 MA20 <strong>63,646.8</strong>。4 小時最近已收線為 04:00，收 <strong>62,661.1</strong>，低於 MA20 <strong>64,472.7</strong>。多週期偏空；短線 RSI 偏低且價格接近當輪低點，是不宜追空的反證。</li>
+<li>本輪模型為 BTCUSDT、非 BTCUSDC；24 小時方向值 <strong>50.93%</strong>、預測近中性，且沒有前向評分；4 小時前向樣本僅 9 筆。另缺深度特徵，因此只作低權重背景，不據此開倉。</li>
+</ul>
+<h3>前次檢討與帳戶決策</h3>
+<ul>
+<li>前次報告 <strong>20261119-065002-BTCUSDC-b075</strong> 於 06:55:10 完成，方向 SHORT、動作 WAIT，候選價 62,300。至本輪 07:00 價格約 62,144.5，雖低於候選價，但沒有實際成交，不能計作獲利；24 小時觀點尚未成熟。前次所列 15 分鐘收復 62,635.855 的空方撤銷條件尚未觸發。</li>
+<li><strong>帳戶：WAIT，不開倉。</strong> original 帳戶快照為 current、空手，權益估值 <strong>9,886.31 USDC</strong>，允許 WAIT／OPEN；沒有本輪成交、手續費或資金費。急跌後追空的風險報酬不佳，也未有足夠反轉證據做多。</li>
+<li>若 BTCUSDC 5 分鐘收破 <strong>61,950</strong> 且後續未快速收回，可再核對 Binance OI、成交及清算變化；若 15 分鐘收復本輪 MA20 <strong>62,592.4</strong>，則重評空方條件，但不自動反手。入場與失效判斷以 Binance BTCUSDC 為準，Hyperliquid 標記價只作風險背景。</li>
+<li>**投資計畫｜經驗檢查：**相似下行市況做空觀點過往多數獲支持，但逆向波動曾超過建議風險距離；因此不把方向偏空等同立即開倉。</li>
+<li>**投資組合經理決策｜經驗檢查：**20 段相似市況的 24 小時收盤有 14 段上漲、中位數 +0.36%；這降低空方信心，不視為本輪上漲機率，支持先觀望而非追空。</li>
+</ul>
+<h3>背景資料</h3>
+<p>全市場市值 <strong>$2.24T</strong>、24 小時 <strong>−2.72%</strong>；BTC 24 小時 <strong>−3.80%</strong>、7 日 <strong>−15.46%</strong>，BTC 市佔率 <strong>56.12%</strong>。美元穩定幣供給 1 日 <strong>−0.12%</strong>、7 日 <strong>−1.17%</strong>，僅作低頻流動性背景。BTC 網路建議費率各檔均為 <strong>1 sat/vB</strong>，代表網路費率／擁堵需求偏低，與本模擬交易成本無關。</p>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th style="text-align:right">本輪數據</th>
+<th>解讀</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BTCUSDC 最新價</td>
+<td style="text-align:right">62,144.5 USDC（07:00）</td>
+<td>低於 5m、15m、1h MA20</td>
+</tr>
+<tr>
+<td>Binance OI</td>
+<td style="text-align:right">23,913 BTC；4h −1.22%、24h +5.88%</td>
+<td>近端收縮；不能單憑 OI 判定多空方向</td>
+</tr>
+<tr>
+<td>OKX 公開清算參考</td>
+<td style="text-align:right">多 $20.96M、空 $5.70M</td>
+<td>約 24 小時事件觀測，非全市場</td>
+</tr>
+<tr>
+<td>Binance 資金費／溢價</td>
+<td style="text-align:right">+0.0087%／8h；−0.0392%</td>
+<td>多方付費，價格溢價偏弱</td>
+</tr>
+<tr>
+<td>Hyperliquid 標記價</td>
+<td style="text-align:right">62,250 USDC</td>
+<td>樣本清算風險參考，非 Binance 觸發價</td>
+</tr>
+<tr>
+<td>original 帳戶</td>
+<td style="text-align:right">空手；權益估值 9,886.31 USDC</td>
+<td>本輪 WAIT，無成交及新增費用</td>
+</tr>
+</tbody>
+</table>
+<h3>Hyperliquid BTC 研究時快照</h3>
+<ul>
+<li>11-19 06:59（台北）。樣本中追蹤 221 個有倉地址，有效強平價 205 筆。</li>
+<li>價帶金額為預估部位名目。已觀測強平成交另計。</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>倉位方向</th>
+<th style="text-align:right">強平價帶（USD）</th>
+<th style="text-align:right">部位（BTC）</th>
+<th style="text-align:right">預估名目（USD）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>多單</td>
+<td style="text-align:right">62,000–62,100</td>
+<td style="text-align:right">57.32</td>
+<td style="text-align:right">3,554,948</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">61,800–61,900</td>
+<td style="text-align:right">25.60</td>
+<td style="text-align:right">1,583,618</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">61,600–61,700</td>
+<td style="text-align:right">79.00</td>
+<td style="text-align:right">4,872,952</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">61,500–61,600</td>
+<td style="text-align:right">34.19</td>
+<td style="text-align:right">2,105,441</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">61,400–61,500</td>
+<td style="text-align:right">26.63</td>
+<td style="text-align:right">1,636,254</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">61,000–61,100</td>
+<td style="text-align:right">50.16</td>
+<td style="text-align:right">3,060,918</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">60,800–60,900</td>
+<td style="text-align:right">32.00</td>
+<td style="text-align:right">1,947,508</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">60,700–60,800</td>
+<td style="text-align:right">24.28</td>
+<td style="text-align:right">1,474,377</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">60,600–60,700</td>
+<td style="text-align:right">16.80</td>
+<td style="text-align:right">1,018,127</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">60,400–60,500</td>
+<td style="text-align:right">84.80</td>
+<td style="text-align:right">5,127,980</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">60,200–60,300</td>
+<td style="text-align:right">99.95</td>
+<td style="text-align:right">6,025,182</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">59,600–59,700</td>
+<td style="text-align:right">156.59</td>
+<td style="text-align:right">9,343,599</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">59,200–59,300</td>
+<td style="text-align:right">23.96</td>
+<td style="text-align:right">1,419,964</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">58,700–58,800</td>
+<td style="text-align:right">28.38</td>
+<td style="text-align:right">1,666,205</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">58,000–58,100</td>
+<td style="text-align:right">20.00</td>
+<td style="text-align:right">1,160,433</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">57,800–57,900</td>
+<td style="text-align:right">252.96</td>
+<td style="text-align:right">14,623,371</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">57,700–57,800</td>
+<td style="text-align:right">75.72</td>
+<td style="text-align:right">4,370,711</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">57,600–57,700</td>
+<td style="text-align:right">87.90</td>
+<td style="text-align:right">5,065,493</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">57,400–57,500</td>
+<td style="text-align:right">203.96</td>
+<td style="text-align:right">11,710,745</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">57,300–57,400</td>
+<td style="text-align:right">48.71</td>
+<td style="text-align:right">2,793,985</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">57,000–57,100</td>
+<td style="text-align:right">20.00</td>
+<td style="text-align:right">1,141,349</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">56,900–57,000</td>
+<td style="text-align:right">50.00</td>
+<td style="text-align:right">2,849,887</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">56,800–56,900</td>
+<td style="text-align:right">115.00</td>
+<td style="text-align:right">6,541,102</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">56,600–56,700</td>
+<td style="text-align:right">60.00</td>
+<td style="text-align:right">3,398,123</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">56,500–56,600</td>
+<td style="text-align:right">145.60</td>
+<td style="text-align:right">8,227,158</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">56,300–56,400</td>
+<td style="text-align:right">40.00</td>
+<td style="text-align:right">2,252,967</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">56,200–56,300</td>
+<td style="text-align:right">38.87</td>
+<td style="text-align:right">2,188,069</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">56,000–56,100</td>
+<td style="text-align:right">115.97</td>
+<td style="text-align:right">6,503,654</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">55,900–56,000</td>
+<td style="text-align:right">19.37</td>
+<td style="text-align:right">1,084,092</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">55,600–55,700</td>
+<td style="text-align:right">50.80</td>
+<td style="text-align:right">2,825,519</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">55,000–55,100</td>
+<td style="text-align:right">58.43</td>
+<td style="text-align:right">3,219,174</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">54,300–54,400</td>
+<td style="text-align:right">50.00</td>
+<td style="text-align:right">2,716,720</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">54,100–54,200</td>
+<td style="text-align:right">43.47</td>
+<td style="text-align:right">2,355,564</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">54,000–54,100</td>
+<td style="text-align:right">90.10</td>
+<td style="text-align:right">4,866,441</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">53,300–53,400</td>
+<td style="text-align:right">30.00</td>
+<td style="text-align:right">1,600,144</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">52,900–53,000</td>
+<td style="text-align:right">20.00</td>
+<td style="text-align:right">1,059,603</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">52,400–52,500</td>
+<td style="text-align:right">30.18</td>
+<td style="text-align:right">1,583,191</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">52,000–52,100</td>
+<td style="text-align:right">261.27</td>
+<td style="text-align:right">13,605,228</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">51,900–52,000</td>
+<td style="text-align:right">20.65</td>
+<td style="text-align:right">1,071,944</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">51,700–51,800</td>
+<td style="text-align:right">96.13</td>
+<td style="text-align:right">4,971,005</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">51,400–51,500</td>
+<td style="text-align:right">23.21</td>
+<td style="text-align:right">1,193,673</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">51,100–51,200</td>
+<td style="text-align:right">1,226.89</td>
+<td style="text-align:right">62,697,354</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">50,600–50,700</td>
+<td style="text-align:right">74.41</td>
+<td style="text-align:right">3,769,925</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">50,500–50,600</td>
+<td style="text-align:right">50.00</td>
+<td style="text-align:right">2,529,609</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">50,200–50,300</td>
+<td style="text-align:right">42.24</td>
+<td style="text-align:right">2,121,602</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">48,900–49,000</td>
+<td style="text-align:right">555.96</td>
+<td style="text-align:right">27,187,752</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">48,300–48,400</td>
+<td style="text-align:right">60.58</td>
+<td style="text-align:right">2,930,133</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">48,000–48,100</td>
+<td style="text-align:right">97.15</td>
+<td style="text-align:right">4,669,110</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">47,000–47,100</td>
+<td style="text-align:right">109.92</td>
+<td style="text-align:right">5,171,499</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">46,700–46,800</td>
+<td style="text-align:right">311.35</td>
+<td style="text-align:right">14,559,548</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">45,700–45,800</td>
+<td style="text-align:right">125.20</td>
+<td style="text-align:right">5,727,447</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">45,500–45,600</td>
+<td style="text-align:right">177.70</td>
+<td style="text-align:right">8,089,583</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">44,300–44,400</td>
+<td style="text-align:right">35.18</td>
+<td style="text-align:right">1,560,397</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">44,200–44,300</td>
+<td style="text-align:right">147.00</td>
+<td style="text-align:right">6,497,612</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">44,100–44,200</td>
+<td style="text-align:right">17.35</td>
+<td style="text-align:right">766,307</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">43,700–43,800</td>
+<td style="text-align:right">89.85</td>
+<td style="text-align:right">3,933,269</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">43,600–43,700</td>
+<td style="text-align:right">22.29</td>
+<td style="text-align:right">973,325</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">43,300–43,400</td>
+<td style="text-align:right">380.00</td>
+<td style="text-align:right">16,467,194</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">42,800–42,900</td>
+<td style="text-align:right">44.32</td>
+<td style="text-align:right">1,897,085</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">41,800–41,900</td>
+<td style="text-align:right">261.90</td>
+<td style="text-align:right">10,951,493</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">41,200–41,300</td>
+<td style="text-align:right">181.84</td>
+<td style="text-align:right">7,508,287</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">40,000–40,100</td>
+<td style="text-align:right">17.14</td>
+<td style="text-align:right">686,996</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">39,900–40,000</td>
+<td style="text-align:right">190.00</td>
+<td style="text-align:right">7,587,579</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">39,600–39,700</td>
+<td style="text-align:right">30.00</td>
+<td style="text-align:right">1,189,048</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">39,300–39,400</td>
+<td style="text-align:right">49.35</td>
+<td style="text-align:right">1,942,981</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">38,500–38,600</td>
+<td style="text-align:right">33.64</td>
+<td style="text-align:right">1,296,534</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">38,300–38,400</td>
+<td style="text-align:right">35.00</td>
+<td style="text-align:right">1,341,270</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">37,200–37,300</td>
+<td style="text-align:right">43.04</td>
+<td style="text-align:right">1,602,873</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">37,100–37,200</td>
+<td style="text-align:right">83.60</td>
+<td style="text-align:right">3,103,199</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">37,000–37,100</td>
+<td style="text-align:right">33.00</td>
+<td style="text-align:right">1,222,354</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">36,700–36,800</td>
+<td style="text-align:right">50.00</td>
+<td style="text-align:right">1,837,470</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">36,600–36,700</td>
+<td style="text-align:right">20.00</td>
+<td style="text-align:right">733,025</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">36,100–36,200</td>
+<td style="text-align:right">43.55</td>
+<td style="text-align:right">1,574,685</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">35,900–36,000</td>
+<td style="text-align:right">70.54</td>
+<td style="text-align:right">2,537,873</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">33,700–33,800</td>
+<td style="text-align:right">28.32</td>
+<td style="text-align:right">956,739</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">32,300–32,400</td>
+<td style="text-align:right">18.44</td>
+<td style="text-align:right">596,416</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">32,200–32,300</td>
+<td style="text-align:right">86.56</td>
+<td style="text-align:right">2,789,214</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">27,700–27,800</td>
+<td style="text-align:right">71.22</td>
+<td style="text-align:right">1,976,253</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">27,000–27,100</td>
+<td style="text-align:right">20.00</td>
+<td style="text-align:right">540,495</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">25,600–25,700</td>
+<td style="text-align:right">41.02</td>
+<td style="text-align:right">1,052,086</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">24,500–24,600</td>
+<td style="text-align:right">55.00</td>
+<td style="text-align:right">1,351,604</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">23,800–23,900</td>
+<td style="text-align:right">56.58</td>
+<td style="text-align:right">1,351,546</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">22,800–22,900</td>
+<td style="text-align:right">24.30</td>
+<td style="text-align:right">554,127</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">19,400–19,500</td>
+<td style="text-align:right">86.95</td>
+<td style="text-align:right">1,686,881</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">15,500–15,600</td>
+<td style="text-align:right">88.88</td>
+<td style="text-align:right">1,378,373</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">14,400–14,500</td>
+<td style="text-align:right">24.30</td>
+<td style="text-align:right">350,056</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">5,200–5,300</td>
+<td style="text-align:right">25.00</td>
+<td style="text-align:right">130,895</td>
+</tr>
+<tr>
+<td>多單</td>
+<td style="text-align:right">0–100</td>
+<td style="text-align:right">30.00</td>
+<td style="text-align:right">1,902</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">63,700–63,800</td>
+<td style="text-align:right">20.00</td>
+<td style="text-align:right">1,274,558</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">65,100–65,200</td>
+<td style="text-align:right">1,500.00</td>
+<td style="text-align:right">97,798,393</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">65,200–65,300</td>
+<td style="text-align:right">48.00</td>
+<td style="text-align:right">3,133,571</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">65,400–65,500</td>
+<td style="text-align:right">32.39</td>
+<td style="text-align:right">2,120,047</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">65,800–65,900</td>
+<td style="text-align:right">20.00</td>
+<td style="text-align:right">1,317,007</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">65,900–66,000</td>
+<td style="text-align:right">353.43</td>
+<td style="text-align:right">23,293,849</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">66,800–66,900</td>
+<td style="text-align:right">40.17</td>
+<td style="text-align:right">2,687,177</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">67,100–67,200</td>
+<td style="text-align:right">20.87</td>
+<td style="text-align:right">1,400,632</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">68,800–68,900</td>
+<td style="text-align:right">159.64</td>
+<td style="text-align:right">10,991,006</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">69,600–69,700</td>
+<td style="text-align:right">23.33</td>
+<td style="text-align:right">1,625,431</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">71,100–71,200</td>
+<td style="text-align:right">265.73</td>
+<td style="text-align:right">18,914,767</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">71,200–71,300</td>
+<td style="text-align:right">17.43</td>
+<td style="text-align:right">1,241,687</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">73,100–73,200</td>
+<td style="text-align:right">134.34</td>
+<td style="text-align:right">9,831,290</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">73,200–73,300</td>
+<td style="text-align:right">90.51</td>
+<td style="text-align:right">6,625,207</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">73,300–73,400</td>
+<td style="text-align:right">30.00</td>
+<td style="text-align:right">2,199,529</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">73,500–73,600</td>
+<td style="text-align:right">100.68</td>
+<td style="text-align:right">7,401,837</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">73,700–73,800</td>
+<td style="text-align:right">50.10</td>
+<td style="text-align:right">3,692,870</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">74,000–74,100</td>
+<td style="text-align:right">232.25</td>
+<td style="text-align:right">17,200,467</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">74,700–74,800</td>
+<td style="text-align:right">869.39</td>
+<td style="text-align:right">64,992,636</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">75,000–75,100</td>
+<td style="text-align:right">1,206.01</td>
+<td style="text-align:right">90,497,584</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">75,500–75,600</td>
+<td style="text-align:right">28.01</td>
+<td style="text-align:right">2,117,038</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">75,900–76,000</td>
+<td style="text-align:right">110.79</td>
+<td style="text-align:right">8,417,233</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">76,400–76,500</td>
+<td style="text-align:right">20.00</td>
+<td style="text-align:right">1,528,060</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">76,600–76,700</td>
+<td style="text-align:right">200.00</td>
+<td style="text-align:right">15,328,198</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">76,900–77,000</td>
+<td style="text-align:right">378.46</td>
+<td style="text-align:right">29,103,964</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">77,100–77,200</td>
+<td style="text-align:right">27.00</td>
+<td style="text-align:right">2,082,124</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">77,500–77,600</td>
+<td style="text-align:right">20.00</td>
+<td style="text-align:right">1,550,086</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">77,800–77,900</td>
+<td style="text-align:right">870.54</td>
+<td style="text-align:right">67,746,605</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">77,900–78,000</td>
+<td style="text-align:right">40.00</td>
+<td style="text-align:right">3,119,661</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">78,600–78,700</td>
+<td style="text-align:right">34.00</td>
+<td style="text-align:right">2,672,762</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">79,100–79,200</td>
+<td style="text-align:right">51.51</td>
+<td style="text-align:right">4,075,801</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">80,400–80,500</td>
+<td style="text-align:right">41.21</td>
+<td style="text-align:right">3,313,863</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">81,000–81,100</td>
+<td style="text-align:right">24.00</td>
+<td style="text-align:right">1,944,794</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">81,500–81,600</td>
+<td style="text-align:right">102.63</td>
+<td style="text-align:right">8,369,834</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">82,100–82,200</td>
+<td style="text-align:right">257.91</td>
+<td style="text-align:right">21,195,515</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">82,600–82,700</td>
+<td style="text-align:right">859.27</td>
+<td style="text-align:right">70,993,593</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">84,100–84,200</td>
+<td style="text-align:right">86.93</td>
+<td style="text-align:right">7,311,618</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">84,300–84,400</td>
+<td style="text-align:right">64.62</td>
+<td style="text-align:right">5,451,499</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">84,800–84,900</td>
+<td style="text-align:right">197.42</td>
+<td style="text-align:right">16,747,850</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">85,800–85,900</td>
+<td style="text-align:right">30.00</td>
+<td style="text-align:right">2,576,646</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">86,100–86,200</td>
+<td style="text-align:right">19.10</td>
+<td style="text-align:right">1,645,430</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">87,100–87,200</td>
+<td style="text-align:right">44.51</td>
+<td style="text-align:right">3,878,591</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">87,300–87,400</td>
+<td style="text-align:right">489.87</td>
+<td style="text-align:right">42,787,220</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">87,500–87,600</td>
+<td style="text-align:right">84.37</td>
+<td style="text-align:right">7,384,754</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">87,700–87,800</td>
+<td style="text-align:right">30.00</td>
+<td style="text-align:right">2,631,044</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">88,600–88,700</td>
+<td style="text-align:right">845.95</td>
+<td style="text-align:right">75,008,438</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">88,800–88,900</td>
+<td style="text-align:right">36.50</td>
+<td style="text-align:right">3,243,084</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">88,900–89,000</td>
+<td style="text-align:right">77.94</td>
+<td style="text-align:right">6,930,938</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">89,300–89,400</td>
+<td style="text-align:right">32.74</td>
+<td style="text-align:right">2,926,031</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">90,300–90,400</td>
+<td style="text-align:right">95.12</td>
+<td style="text-align:right">8,593,680</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">91,000–91,100</td>
+<td style="text-align:right">56.00</td>
+<td style="text-align:right">5,100,677</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">91,300–91,400</td>
+<td style="text-align:right">78.00</td>
+<td style="text-align:right">7,126,894</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">93,500–93,600</td>
+<td style="text-align:right">39.96</td>
+<td style="text-align:right">3,737,740</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">93,600–93,700</td>
+<td style="text-align:right">24.57</td>
+<td style="text-align:right">2,300,833</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">94,500–94,600</td>
+<td style="text-align:right">21.90</td>
+<td style="text-align:right">2,071,439</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">95,800–95,900</td>
+<td style="text-align:right">39.97</td>
+<td style="text-align:right">3,832,546</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">96,400–96,500</td>
+<td style="text-align:right">63.01</td>
+<td style="text-align:right">6,074,751</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">97,800–97,900</td>
+<td style="text-align:right">21.00</td>
+<td style="text-align:right">2,055,191</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">99,600–99,700</td>
+<td style="text-align:right">36.67</td>
+<td style="text-align:right">3,653,391</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">104,000–104,100</td>
+<td style="text-align:right">240.55</td>
+<td style="text-align:right">25,034,718</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">105,000–105,100</td>
+<td style="text-align:right">69.68</td>
+<td style="text-align:right">7,317,907</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">105,800–105,900</td>
+<td style="text-align:right">17.26</td>
+<td style="text-align:right">1,827,076</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">105,900–106,000</td>
+<td style="text-align:right">115.16</td>
+<td style="text-align:right">12,200,402</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">106,000–106,100</td>
+<td style="text-align:right">34.84</td>
+<td style="text-align:right">3,693,217</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">112,200–112,300</td>
+<td style="text-align:right">70.40</td>
+<td style="text-align:right">7,902,776</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">117,800–117,900</td>
+<td style="text-align:right">20.05</td>
+<td style="text-align:right">2,363,401</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">120,000–120,100</td>
+<td style="text-align:right">57.35</td>
+<td style="text-align:right">6,886,208</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">123,500–123,600</td>
+<td style="text-align:right">17.02</td>
+<td style="text-align:right">2,103,027</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">123,800–123,900</td>
+<td style="text-align:right">19.55</td>
+<td style="text-align:right">2,421,517</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">125,500–125,600</td>
+<td style="text-align:right">139.72</td>
+<td style="text-align:right">17,545,575</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">125,700–125,800</td>
+<td style="text-align:right">122.81</td>
+<td style="text-align:right">15,443,920</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">129,200–129,300</td>
+<td style="text-align:right">343.07</td>
+<td style="text-align:right">44,341,467</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">129,800–129,900</td>
+<td style="text-align:right">23.56</td>
+<td style="text-align:right">3,060,632</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">130,500–130,600</td>
+<td style="text-align:right">166.70</td>
+<td style="text-align:right">21,763,513</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">131,100–131,200</td>
+<td style="text-align:right">70.63</td>
+<td style="text-align:right">9,265,726</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">133,200–133,300</td>
+<td style="text-align:right">167.06</td>
+<td style="text-align:right">22,267,918</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">134,200–134,300</td>
+<td style="text-align:right">47.08</td>
+<td style="text-align:right">6,322,845</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">136,300–136,400</td>
+<td style="text-align:right">32.30</td>
+<td style="text-align:right">4,403,138</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">140,300–140,400</td>
+<td style="text-align:right">50.00</td>
+<td style="text-align:right">7,018,681</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">140,500–140,600</td>
+<td style="text-align:right">140.62</td>
+<td style="text-align:right">19,762,012</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">143,500–143,600</td>
+<td style="text-align:right">30.00</td>
+<td style="text-align:right">4,307,684</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">143,600–143,700</td>
+<td style="text-align:right">58.18</td>
+<td style="text-align:right">8,356,491</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">143,800–143,900</td>
+<td style="text-align:right">34.00</td>
+<td style="text-align:right">4,891,812</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">146,400–146,500</td>
+<td style="text-align:right">654.46</td>
+<td style="text-align:right">95,847,446</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">146,700–146,800</td>
+<td style="text-align:right">17.50</td>
+<td style="text-align:right">2,568,400</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">148,800–148,900</td>
+<td style="text-align:right">78.99</td>
+<td style="text-align:right">11,759,945</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">160,300–160,400</td>
+<td style="text-align:right">43.61</td>
+<td style="text-align:right">6,991,849</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">196,600–196,700</td>
+<td style="text-align:right">23.50</td>
+<td style="text-align:right">4,621,460</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">218,100–218,200</td>
+<td style="text-align:right">17.00</td>
+<td style="text-align:right">3,709,166</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">222,100–222,200</td>
+<td style="text-align:right">92.07</td>
+<td style="text-align:right">20,450,990</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">223,400–223,500</td>
+<td style="text-align:right">18.48</td>
+<td style="text-align:right">4,129,649</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">280,000–280,100</td>
+<td style="text-align:right">18.46</td>
+<td style="text-align:right">5,171,222</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">321,700–321,800</td>
+<td style="text-align:right">76.92</td>
+<td style="text-align:right">24,750,929</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">384,100–384,200</td>
+<td style="text-align:right">23.00</td>
+<td style="text-align:right">8,836,451</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">442,200–442,300</td>
+<td style="text-align:right">16.83</td>
+<td style="text-align:right">7,443,445</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">477,200–477,300</td>
+<td style="text-align:right">29.70</td>
+<td style="text-align:right">14,173,204</td>
+</tr>
+<tr>
+<td>空單</td>
+<td style="text-align:right">938,400–938,500</td>
+<td style="text-align:right">20.00</td>
+<td style="text-align:right">18,769,845</td>
+</tr>
+</tbody>
+</table>
+<h2>多頭研究員</h2>
+<p><strong>Rating</strong>: Buy</p>
+<h3>多頭論點：押注 24 小時超跌反彈，而非宣稱大趨勢已反轉</h3>
+<p>我以<strong>短線逆勢、低信心做多</strong>為主張：空方的多週期趨勢證據很強，但價格已急跌至近端低點，數次下探約 61,950–62,000 USDC 後仍收在該區上方。若這裡形成短線賣壓衰竭，回補空單與均值回歸可能令 BTC 在未來 24 小時反彈至上方壓力區。這是可被推翻的反彈交易，不是長期看多判斷。</p>
+<ul>
+<li>
+<p><strong>低位反覆被接住，是本次最直接的多頭依據。</strong> 5 分鐘 K 在 06:50 放量下探 61,990.8，之後 06:55 收回至 62,239.9；07:00 又下探 61,950，最後收於 62,144.6。兩次都未能以收盤價確認有效跌破該低位區，顯示低檔有承接意願。這還不能證明築底，但使得在支撐附近承擔有限風險、押注反彈，比在急跌後追空更有吸引力。</p>
+</li>
+<li>
+<p><strong>急跌後的反彈可能來自賣壓消化與空單回補。</strong> 15 分鐘 RSI 約 31.9、1 小時 RSI 約 26.6，反映短線已嚴重走弱；這些讀數本身不是買進訊號，但在價格於近低位反覆收回時，增加了均值回歸的條件。若 BTCUSDC 先收復 5 分鐘 MA20 約 62,312，再站回 15 分鐘 MA20 約 62,592，將使短線空單面臨回補壓力；進一步收復約 62,745–62,800，反彈論點會明顯增強。</p>
+</li>
+<li>
+<p><strong>衍生品資料可支持「去槓桿後反彈」情境，但不能單獨證明轉多。</strong> Binance BTCUSDC OI 近 4 小時下降 1.22%，價格同期走弱，與部分槓桿部位退出相容；OKX 約 24 小時觀測到多單清算約 2,096 萬美元，高於空單約 570 萬美元，也說明多方已承受一輪清洗。若賣壓因此減弱，價格不必有新的重大利多，也可能因賣單耗盡及空單回補而反彈。這些資料有平台與時段限制，不能推論全市場已完成去槓桿。</p>
+</li>
+<li>
+<p><strong>情緒極度悲觀，提供反向交易的背景，而非充分條件。</strong> 11 月 18 日恐懼貪婪指數為 11，屬極度恐懼。這不是即時底部指標，但與近低位未能持續收破合併觀察，代表悲觀預期已有相當程度反映在價格中。相似市況記憶中的 20 段樣本，24 小時有 14 段收高、中位變動 +0.36%；樣本有限，只能略微支持反彈情境，不能當成本輪上漲機率。</p>
+</li>
+<li>
+<p><strong>上行空間分層看待。</strong> 第一個要收復的區域是 62,312–62,592；若買盤延續，先看 62,745–62,800，約較現價高 1%。若突破並站穩該區，下一段反彈可看 63,300 左右，進一步則是 1 小時 MA20 約 63,647；後者需要更明確的趨勢修復，不能當作基本目標。沒有資料支持把更遠的價位列為本次 24 小時主目標。</p>
+</li>
+</ul>
+<h3>催化因素與已知限制</h3>
+<p>本次可辨識的催化主要是<strong>技術性收復低位、短線空單回補，以及急跌後賣壓減弱</strong>，不是已知的重大事件催化。提供的資料沒有列出未來 24 小時內確定發生的 BTC 專屬事件。ETF 流出、礦工售幣與 Fed 官員鷹派談話是偏空背景，但部分屬不同期間的事件或看法，不能直接推定會在本持有期形成同等新增賣壓；12 月利率會議亦不在本次 24 小時區間內。</p>
+<h3>空方最強證據，以及本輪多頭最不利之處</h3>
+<p>目前尚未收到空頭分析師的發言，因此以下不是對其發言逐點反駁；我先指出共同資料中最不利於多頭的證據。5 分鐘、15 分鐘與 1 小時收盤都低於各自 MA20，1 小時收盤 62,144.6 遠低於 MA20 63,646.8；07:00 的 5 分鐘收盤也低於 MA20 62,312.2，且該根收盤低於開盤。24 小時主動賣出高於主動買入，資金費率為正、多頭付費，多空帳戶比 3.19 也代表多頭帳戶數偏多；價格下跌時，這些因素可能加劇多殺多。BTCUSDT 模型的 24 小時方向值約 50.9%，近乎中性，且交易標的不同，不能為多頭提供可靠優勢。</p>
+<p>因此，多頭論點依賴的是<strong>近低位的短線承接與反彈風險報酬</strong>，不是多週期趨勢已轉多。若低位支撐失守而未迅速收回，這個交易假設就應撤銷。</p>
+<h3>前次報告、帳戶與交易風控</h3>
+<p>前次報告 <strong>20261119-065002-BTCUSDC-b075</strong> 於 06:55:10 完成，原判斷偏空但選擇 WAIT。至本輪 07:00，價格進一步下探 61,950；但 06:55 曾收回至 62,239.9，顯示低位仍有反彈。前次觀察只有約 290 秒，24 小時觀點尚未成熟；也沒有本帳戶實際成交，故不能把價格下跌算作帳戶獲利。本輪將方向從「偏空但不追空」修正為「近低位小幅偏多」，依據是反覆下探後收回；反證則是收盤仍低於各短週期均線。</p>
+<p>原版帳戶快照時間為 07:00:00.544，核對時年齡約 75 秒，狀態 current、空手、權益估值 9,886.31 USDC，允許 OPEN。建議採限價等待低位成交，不追價、不加倉；若未在 2 小時內成交就取消。按 0.23 BTC、62,000 USDC 入場、61,650 USDC 停損估算，價格風險約 80.50 USDC；假設進場掛單、停損吃單，往返手續費約 9.95 USDC。若正資金費率 +0.0087%／8 小時維持 24 小時，估計另付約 3.72 USDC；含上述費用的預估總風險約 94 USDC，未計滑價。若在 62,800 USDC 以吃單方式停利，扣除估計手續費與資金費後的淨收益約 170 USDC；均為估算，實際資金費率及成交價格可能不同。</p>
+<h3>經驗檢查</h3>
+<p>相似市況樣本 24 小時偏向收高，但只有 20 段且不是本輪預測；相似下行市況的做空經驗雖多數獲支持，亦曾出現大幅逆向波動。因此我把這次交易定位為有硬停損的短線反彈，而非依歷史比率押注趨勢反轉。</p>
+<p>FINAL TRANSACTION PROPOSAL: OPEN LONG BTCUSDC; resting buy LIMIT 62,000 USDC for 0.23 BTC (notional ≈14,260 USDC), TTL 2h; stop-market 61,650; take-profit 62,800 (stretch 63,300); cancel unfilled if a 15m candle closes below 61,950; no chase; close after 24h.</p>
+<p><strong>多頭失效線：BTCUSDC 15 分鐘收盤有效跌破 61,950 USDC 且未能迅速收回時，低位承接的做多論點失效，並以 61,650 USDC 作硬停損。</strong></p>
+<h2>空頭研究員</h2>
+<p><strong>Rating</strong>: Underweight</p>
+<p>**方向與信心：**24 小時偏空，信心 61/100。這不是把前輪觀望理由照搬，而是本輪已收線行情顯示，6:55 的反彈未能延續，7:00 再收低至 62,144.6 USDC，且短中週期均線仍在上方。做空的主要機會是價格反彈至壓力區後轉弱；不在支撐旁用市價追空。</p>
+<p>**技術結構：**5 分鐘 7:00 收盤 62,144.6，低於 MA20 62,312.2 與 MA60 62,604.9；同一根最低 61,950，收盤雖反彈約 195 USDC，仍未收復均線。更重要的是，6:50 曾放量 460.287 BTC 急跌至 62,018.1，6:55 反彈收 62,239.9，接著 7:00 再收低。這比較像急跌後反抽未能站穩，而不是已確認的底部反轉。15 分鐘 7:00 收於 62,144.6，低於 MA20 62,592.4；1 小時同樣收於 62,144.6，遠低於 MA20 63,646.8，RSI 26.58。4 小時最新已收線是 04:00，收 62,661.1，低於當時 MA20 64,472.7；此週期尚無 07:00 收線可更新確認。</p>
+<p>**資金流與槓桿：**24 小時主動賣出約 1,607.9M、買入約 1,559.2M USDC，買賣比 0.970，賣方略占優勢。Binance BTCUSDC 資金費率為正 0.0087%／8 小時，多方付費；標記價相對指數價折價 0.0392%，與弱勢價格相符。多空帳戶比升至 3.19（約 24 小時前 2.79），顯示偏多帳戶仍多，若 61,950 一帶失守，可能增加多單停損壓力；但帳戶數比不是部位量，不能據此宣稱槓桿已極端擁擠。</p>
+<p>Binance OI 近 4 小時下降 1.22%、24 小時仍增加 5.88%，近端由 01:00 的 24,337 BTC 降至 06:00 的 23,903 BTC；這與短線槓桿收縮相容，卻無法判定是多單平倉還是空單回補。OKX 約 24 小時觀測到多單清算 20.96M 美元、高於空單 5.70M 美元，可作為多頭受壓的旁證，但不代表全市場，也意味部分多單可能已先被清掉。Hyperliquid 樣本在 62,024.69、61,860 附近有可觀察的多單強平價位；若價格跌破並持續，可能形成加速催化，但樣本有限、強平價不是必達目標。</p>
+<p>**情緒與事件催化：**11 月 18 日恐懼貪婪指數為 11，屬極度恐懼。順勢解讀是市場風險偏好弱；反向解讀則是空方交易可能已擁擠、急跌後容易反彈，因此它不是單獨做空理由。短線最直接的催化不是已知排定的宏觀事件，而是 61,950 低點是否被有效跌破，以及跌破後是否伴隨賣出延續、OI／清算變化。ETF 流出約 2.4 億美元、礦工售幣與 Fed 鷹派談話可作偏空背景，但資料未證明這些賣壓會在未來 24 小時持續，也沒有可核實的本持有期定時催化。</p>
+<p>**下行空間：**先看重新測試 61,950；若 5 分鐘收線跌破且未迅速收回，下一段觀察 61,860–61,680。以 62,300 的候選進場價計，61,680 約有 1.0% 下行空間。這些是條件式目標，不是預測必達；目前 61,950 尚未被收線確認跌破。</p>
+<p><strong>多頭最強論點及反駁：</strong></p>
+<ul>
+<li>**「RSI 已超賣，低點可能就是局部底部。」**1 小時 RSI 26.58 確實提高反彈風險，但超賣不是反轉確認；目前 5 分鐘與 15 分鐘仍在各自 MA20 下方，且 6:55 反彈後 7:00 再度收低。這支持等待反彈空，而非在低位追空。</li>
+<li>**「61,950 附近有支撐，價格已從低點拉回。」**低點尚未確認跌破，這是重要反證；但收回後仍未站回短週期均線。只要反彈受阻、再測低點，該支撐就可能轉為觸發賣壓與多單停損的區域。</li>
+<li>**「相似行情過去 24 小時多數上漲，中位數也為正。」**20 段樣本中 14 段收高、中位數 +0.36%，確實降低空方信心，但樣本不是本輪機率，且不能取代目前 BTCUSDC 的收線結構。BTCUSDT 模型的 24 小時方向約 50.9%，沒有前向驗證，且標的是 BTCUSDT，對本次方向只能給低權重。</li>
+<li>**「急跌可能已完成去槓桿，後續賣壓有限。」**OKX 多單清算較多、Binance 近端 OI 收縮，確實表示部分去槓桿可能已發生；因此不把清算當成必然連鎖，而是要求低點破位延續，並以回抽進場控制追空風險。</li>
+</ul>
+<p>**前次檢討：**前次報告 <code>20261119-065002-BTCUSDC-b075</code> 於 06:55:10 完成，方向 SHORT、動作 WAIT，候選進場 62,300。至本輪快照前帳戶仍無實際成交；價格低於候選價不算帳戶獲利。前次 290 秒觀察不足以評估 24 小時觀點。本輪新增的關鍵證據是 6:55 反彈收 62,239.9 後，7:00 再收 62,144.6 並觸及 61,950；因此方向判斷延續偏空，但把研究上的 WAIT 改為可執行的回抽限價空單，而不是現價追空。原版帳戶快照 07:00:00.544、核對時年齡 75 秒，狀態 current，空手，權益估值 9,886.31 USDC，允許 OPEN／WAIT。</p>
+<p>**交易計畫：**掛單在簿上成交時按 maker 0.0200% 估算；若兩小時內未成交則取消，不追價。以 0.25 BTC、62,300 進場計，名目約 15,575 USDC，10 倍槓桿下估計占用保證金約 1,558 USDC。硬停損 62,650，停利 61,680，持有滿 24 小時仍未觸及則平倉，不加倉。按進場掛單、停損／停利出場吃單估算，停損價差損失約 87.50 USDC、往返手續費約 10.95 USDC，合計約 98.45 USDC，接近但未超過權益 1% 的 98.86 USDC 風險額；停利淨收益約 144 USDC。資金費、滑價與實際成交差異未計，資金費不預先當作收益。本輪尚無已支付手續費或實際成交。</p>
+<p>經驗檢查：相似下行市況的做空觀點過去多數獲支持，但逆向波動曾超過建議風險距離；因此採有限倉位、硬停損及兩小時委託期限。20 段相似市況的 24 小時收盤有 14 段上漲、中位數 +0.36%，是本次降低信心、避免市價追空的反證，不是本輪方向機率。</p>
+<p>FINAL TRANSACTION PROPOSAL: OPEN SHORT 0.25 BTC BTCUSDC LIMIT 62,300 USDC; stop-loss 62,650; take-profit 61,680; cancel unfilled order after 2 hours; close after 24 hours if neither exit is triggered.</p>
+<p>空頭失效線：若 BTCUSDC 15 分鐘收盤站上 62,592.4，空方結構論點需撤銷重評，且 62,650 為本交易硬停損價。</p>
+<h2>積極派風控</h2>
+<p><strong>Rating</strong>: Underweight</p>
+<p>我會把方向判斷與此刻是否下單分開：短線偏空的證據夠支持保留做空計畫，但不足以把尚未成立的回抽訊號當成成交。07:00 已收線的 5 分鐘 K 收於 62,144.6，低於 MA20 62,312.165；15 分鐘及 1 小時亦低於各自 MA20。1 小時收盤 62,144.6、RSI 26.58，且 5 分鐘低點 61,950 尚未確認有效跌破。這是下行結構明確、但追空位置欠佳的組合。</p>
+<p>因此，原版帳戶現在仍應 WAIT；但若把整個條件式做空機會一併否決，我認為會過度謹慎。相較於只看超賣，仍有利空延續的證據：低點附近反彈後，07:00 再收低；多週期均在均線下方；賣方成交略占優勢，資金費率為正，多方仍付費。這些支持等待回抽後做空，而不是在 62,144.6 附近追價。</p>
+<p>原提案的回抽條件尚未觸發。最近成交 07:02:46 約 62,292.50，既未觸及 62,300–62,400 區間，也不是完整收線確認。帳戶在檢查時為 current，年齡 192.86 秒，允許 WAIT／OPEN；帳戶空手、權益估值 9,886.31 USDC，沒有本標的持倉可續抱、平倉或反手，也沒有本輪已付手續費或資金費。前次報告 20261119-065002-BTCUSDC-b075 於 06:55:10 完成，當時是 WAIT、未成交；本輪走弱不算該帳戶獲利。07:00 新收線延續偏弱判讀，但低點仍未確認跌破，故不能因此直接市價追空。</p>
+<p>我支持保留「未來兩根已收線 5 分鐘 K 內先觸及 62,300–62,400，之後收於 62,300 下方」作為重新研究的觸發，而不是直接掛一筆兩小時有效的自動進場單。這條件有助於避開低位追空，觸發後仍要用新快照重核價格、均線與風險。尤其「收在 62,300 下方後以 62,300 限價做空」不能假設是 maker 或必然成交：若當時市場已低於 62,300，該委託可能立即成交並按 taker 計費；若沒有回抽，也可能不成交，不應追價。</p>
+<p>部位方面，我會將候選名目上限由 60%提高到 80%，但只在觸發後的新快照仍支持空方、且能接受停損與停利距離時採用；信心可由 58/100 提到 64/100，仍不是高確定性方向。按 62,300 入場估算，80%權益名目約 7,909 USDC、約 0.127 BTC；10 倍槓桿下所需名目保證金約 791 USDC。62,650 停損距入場 350 點，61680 停利距入場 620 點。若以進出場都按 taker 保守估算，停損價格損失約 44.4 USDC，往返費約 7.9 USDC，合計約 52.4 USDC（權益約 0.53%）；停利扣費後約 70.8 USDC，淨風險報酬約 1.35。若能以已掛簿的 maker 委託成交，費用會較低，但不得預設一定如此。這個部位低於經理提出的 100%名目上限，也留有餘裕應付滑價與未知資金費；若實際成交價偏離 62,300，必須按實際成交價重算，不可照搬上述風險額。</p>
+<p>61680 低於本輪 61,950 低點，須要支撐進一步跌破才可達；以本輪 1 小時 ATR(14) 527.78 作尺度，目標距離約 1.18 倍 ATR，24 小時內有波幅空間，但不保證到價。若回抽後價格收復上方區域，空方論點會弱化；候選硬失效仍以 62,650 為界，兩小時未觸發或未成交即取消，不自動反手。</p>
+<p>最強反證不能忽略：15 分鐘 RSI 31.86、1 小時 RSI 26.58，低位反彈或軋空風險不小；20 段相似市況中，24 小時有 14 段收高、中位數 +0.36%，只是歷史參考，不能當成本輪上漲機率；下行市況做空經驗雖多獲支持，但記錄中逆向波動曾超過建議風險距離。BTCUSDT 的 24 小時模型方向約 50.93%，沒有前向評分，且不是 BTCUSDC，不能替空方增加實質確信。這些反證支持控制部位與等待確認，不足以抹去回抽後做空的機會。</p>
+<p><strong>FINAL TRANSACTION PROPOSAL: HOLD</strong></p>
+<p>此處 HOLD 是「現在不開倉」：不把候選價當成已成交，也不收取任何費用。保留條件式空方計畫；觸發後重新審查，若新快照確認條件仍成立，再以不高於 80%名目部位評估開空，停損 62,650、停利 61,680、兩小時候選有效期屆滿取消。</p>
+<h2>保守派風控</h2>
+<p><strong>Rating</strong>: Hold</p>
+<p>我會延續 WAIT，不批准目前這組條件計畫直接進場。帳戶快照在 07:00 為 current，且允許 OPEN；但這只代表可以評估新倉，不代表條件已觸發或交易已有優勢。original 帳戶空手，沒有可續抱、平倉或反手的持倉。</p>
+<p>前次報告 20261119-065002-BTCUSDC-b075 於 06:55:10 完成，當時也是空手 WAIT。到本輪 07:00，5m、15m、1h 收盤均為 62,144.6，仍低於各自 MA20；5m 最低 61,950，1h RSI 26.58，延續偏弱結構，但急跌後也有反彈風險。前次候選沒有成交，不能把價格下跌算成本帳戶獲利。相對前次，本輪弱勢仍在，但不是追空位置。</p>
+<p>提案要求先觸及 62,300–62,400，再由 5m 收於 62,300 下方。這是合理的確認方向，但目前不能視為已觸發：最新完整收線是 07:00，該根高點僅 62,242.5；07:02:46 的最新成交 62,292.50 也仍低於觸發區，且不是完整收線。應等後續已收線 K 確認，不以盤中觸價代替訊號；條件達成後必須用新快照重新審查，不能把舊候選當成自動下單指令。</p>
+<p>我不認為 62,650 是足夠穩健的結構停損。當前 15m MA20 為 62,592.395，近期反彈高點到過 62,556；62,650 只略高於這些位置，約 0.23 個 15m ATR（ATR 250.02）。短線反彈或掃過壓力帶就可能觸停損，未必代表空方結構真正失效。若未來重審，可把失效位置放在壓力區外，例如依新快照確認後考慮 62,750–62,800 一帶；若停損因此拉遠，不能只保留原進場和目標，須重新核算費後風險報酬。較可接受的研究條件是：先出現區間拒絕，再等回抽至 62,380–62,400 附近無法收復時才評估進場，並以新快照確認停損及風險報酬。若價格不回抽，不追價。</p>
+<p>停利 61,680 不是途中沒有阻礙的目標。61,950 是本輪已見低點；提供的衍生品樣本另有約 62,025、61,860，以及 61,679–61,684 的清算價帶。這些是不同來源的參考，不保證價格會到達，也不代表必然反轉；但它們提醒我們，價格可能在到達 61,680 前先遇支撐、清算後回抽或波動加劇。若未來開倉，應考慮在 62,025／61,950 附近分段處理，只有在 5m 收破 61,950 且回抽無法收復時，才讓剩餘部位續看 61,860，再評估更低目標。不要把 61,680 當成必然直達的單一停利。</p>
+<p>提案的部位若按 60% 權益作名目金額，約 5,932 USDC；入場 62,300、停損 62,650，價格風險約 33 USDC，加上預估費用後約 37.5 USDC，約為權益 0.38%，未計滑價及資金費，帳面風險沒有超過 policy 的 1%。但停損若移至結構外，風險會增加；縮小部位可以控制損失，卻不能修復不佳的風險報酬。我會把未來重審的名目上限先壓至權益約 40%，並要求按實際掛單／吃單費用計算後，淨風險報酬仍至少約 1.5；達不到就不做。</p>
+<p>費用估算也要核對單位：若實際名目部位約 5,932 USDC，進場 maker 0.02%、出場 taker 0.05%，往返手續費約 4.15 USDC；43.6 USDC 約是每 1 BTC 名目部位的費用，不是這個 5,932 USDC 部位的實際費用。提案的每 BTC 淨風險報酬估法可供比較，但實際盈虧要按實際數量縮放，不能混用每 BTC 與帳戶金額。</p>
+<p>目前資金費率為正值約 +0.0087%／8 小時，通常是空方收取而非負擔；若 24 小時維持不變，粗略約為名目金額的 0.0261%，5,932 USDC 約收 1.55 USDC。但費率會變動，若轉負則空方付費；這筆預期收入很小，不足以補救不合理的進出場。擁擠方面，多空帳戶比 3.19、正資金費率顯示多頭帳戶偏多，但不是部位量或全市場槓桿證據。近端 OI 收縮及樣本清算資料也不能證明一定會多殺多；超賣後的空頭回補仍是重要反證。</p>
+<p>提供的資料沒有可確認在未來 24 小時內發生的排定重大事件；這不等於沒有突發消息。加密市場 24 小時交易，急速波動可能令停損成交偏離觸發價；目前也沒有涵蓋各候選價位的深度資料，故不能可靠估算滑價。需要把可能的跳動與成交不確定性納入，而不是只按靜態停損價計算。</p>
+<p>因此，條件計畫可以保留為「觸發後重新研究」，但不核准 62,300／62,650／61,680、60% 的原組合直接執行。<strong>FINAL TRANSACTION PROPOSAL: WAIT</strong></p>
+<h2>中立派風控</h2>
+<p><strong>Rating</strong>: Underweight</p>
+<p>最新完整收線的 5 分鐘、15 分鐘及 1 小時結構都偏空：07:00 收盤 62,144.6，分別低於各週期 MA20；1 小時 RSI 26.58，短線已相當弱。但 61,950 低點尚未確認有效跌破，且 RSI 偏低增加反彈風險。因此我支持「方向略偏空」，不支持在現價直接追空。</p>
+<p>帳戶快照為 current，年齡約 193 秒，允許 WAIT／OPEN；original 帳戶空手，權益估值 9,886.31 USDC，沒有持倉、實際成交、已付手續費或資金費。本次不涉及平倉或反手。</p>
+<p>積極做空的最強依據是多週期仍在均線下方、下行結構未扭轉，以及 06:50 放量下跌後 07:00 再次收低。積極派若據此把續跌說成已確認，則忽略 61,950 尚未收破、急跌後反彈及低 RSI 的反向風險；Binance OI 近端收縮也不能單獨證明是多單平倉或空單增倉。相反，保守觀望的依據是低位不追空、等回抽拒絕，這點成立；但若把超賣或相似行情樣本當成必然反彈，也會過度解讀。20 段樣本中 24 小時有 14 段收高、中位數 +0.36%，足以降低空方信心，卻不是本輪反彈機率；BTCUSDT 模型 24 小時方向 50.93%、沒有前向評分，也沒有明確方向優勢。綜合而言，方向偏空，但現時入場優勢不足。</p>
+<p>前次報告 20261119-065002-BTCUSDC-b075 於 06:55:10 完成，當時偏空但 WAIT。本輪 07:00 收線延續均線下方的弱勢，方向判斷仍成立；但 06:55 至本輪僅約五分鐘，前次 24 小時觀點尚未成熟。前次候選未成交，價格低於候選價不代表本帳戶獲利。</p>
+<p>本輪保留條件式短空研究計畫有道理，但不是已下單，也不應預先視為核准。提案稱 07:02:46 最近成交為 62,292.50；這不是 07:00 之後的完整收線確認，也未觸及 62,300–62,400 區間。只有接下來兩根已收線 5 分鐘 K 先觸及該區、再收於 62,300 下方，才重啟研究；屆時須用新快照重核價格、指標和風險，不自動下單。若觸發後以 62,300 限價掛空，價格已在其下方時可能等不到成交；未成交就取消，不追價。若期間直接下跌，也不追空。</p>
+<p>候選價 62,300、停損 62,650、停利 61,680 的距離及 60% 名目部位，按提案所用 9,886.31 USDC 權益估算，約為 5,932 USDC 名目曝險；預估停損含費約 37.5 USDC，約占權益 0.38%，低於帳戶 1% 風險上限。費後 R/R 約 1.46 的估算大致合理，但提案列出的獲利金額有明顯十倍差異：以約 0.0952 BTC 計，停利價差 620 USDC 對應毛利約 59 USDC，扣估算手續費後約 55 USDC，而非 576 USDC。停損費後約 37.5 USDC 的估算則大致相符。另未計滑價與未知資金費，不能把費後 R/R 當成保證結果。</p>
+<p>61,680 目標低於本輪 61,950 低點，必須先破位；即使該目標接近其他平台樣本中的清算價帶，也不能據此確認 Binance 必然下跌到該處。停損和目標都應在新快照重新核驗。過去相似下行情況的空方觀點多數獲支持，但曾出現超過建議風險距離的逆向波動；這支持等待確認及控制曝險，不支持直接追空。</p>
+<p>FINAL TRANSACTION PROPOSAL: HOLD</p>
+<h2>原版模擬交易執行結果</h2>
+<pre><code class="language-json">{
+  &quot;strategy_id&quot;: &quot;original&quot;,
+  &quot;symbol&quot;: &quot;BTCUSDC&quot;,
+  &quot;action&quot;: &quot;WAIT&quot;,
+  &quot;action_label&quot;: &quot;觀望&quot;,
+  &quot;status&quot;: &quot;done&quot;,
+  &quot;reason&quot;: &quot;保留既有持倉、委託與保護&quot;,
+  &quot;at&quot;: &quot;2026-11-19T07:04:51+08:00&quot;
+}
+</code></pre>
+<h2>策略測試經理</h2>
+<p>測試1號／測試2號獨立帳戶；共用每5分鐘評估，先回顧前次研究及實際結果，詳見模擬交易子頁</p>
+<h2>資料來源狀態</h2>
+<table>
+<thead>
+<tr>
+<th>來源</th>
+<th>提供者</th>
+<th>狀態</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>恐懼貪婪指數</td>
+<td>alternative.me</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>Binance 資金費率</td>
+<td>Binance USDⓈ-M 公開 API</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>Binance 多空帳戶比</td>
+<td>Binance USDⓈ-M 公開 API</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>Binance 主動買賣量</td>
+<td>Binance USDⓈ-M 公開 API</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>新聞 RSS：CoinDesk</td>
+<td>CoinDesk</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>新聞 RSS：Cointelegraph</td>
+<td>Cointelegraph</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>新聞 RSS：Decrypt</td>
+<td>Decrypt</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>新聞 RSS：The Block</td>
+<td>The Block</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>Binance 未平倉量</td>
+<td>Binance USDⓈ-M 公開 API</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>OKX 清算參考</td>
+<td>OKX 公開串流／本機 24 小時資料庫</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>Hyperliquid BTC 鯨魚倉位</td>
+<td>Hyperliquid 官方公開 API</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>CoinPaprika 全市場</td>
+<td>CoinPaprika</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>CoinPaprika BTC 行情</td>
+<td>CoinPaprika</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>DefiLlama 穩定幣供給</td>
+<td>DefiLlama</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>BTC 鏈上擁堵度</td>
+<td>mempool.space（建議網路費率）</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>mempool.space 難度調整</td>
+<td>mempool.space</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>blockchain.info 網路統計</td>
+<td>blockchain.info</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>Binance 永續 15 分 K</td>
+<td>Binance USDⓈ-M 公開行情（REST）</td>
+<td>成功</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>本報告由 AI 自動產生，僅供研究參考，不構成投資建議；系統不會下任何真實訂單。</p>
+</blockquote>
+</body></html>
