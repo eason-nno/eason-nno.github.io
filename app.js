@@ -439,7 +439,8 @@ function showSheet(titleHtml, bodyHtml) {
 function closeSheet() { const el = $("#sheet"); if (!el) return; document.removeEventListener("keydown", el._k); el.remove(); el._cleanup?.(); document.body.classList.remove("noscroll"); }
 
 function showRoleDebate(role,reportId){
-  const base=location.origin==='https://eason-nno.github.io'?'https://easonagents-share.pages.dev':'http://127.0.0.1:8800';
+  const base=(usesRelay || location.origin==='https://easonagents-share.pages.dev')
+    ? 'https://easonagents-share.pages.dev':'http://127.0.0.1:8800';
   const remote=base.startsWith('https:');
   const src=base+'/debate?'+new URLSearchParams({role,report:reportId||'',parent:location.origin});
   const previous=document.activeElement;
