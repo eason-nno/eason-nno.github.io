@@ -112,8 +112,11 @@
         location.reload();
       } else {
         const pending = status === 'pending', blocked = status === 'block';
-        show(pending ? '等待核准' : blocked ? '訪問已封鎖' : status === 'expired' ? '訪問已到期' : '此裝置尚未獲准',
+        const denied = status === 'denied';
+        requestButton.textContent = denied || status === 'expired' ? '重新申請訪問' : '申請訪問';
+        show(pending ? '等待核准' : blocked ? '訪問已封鎖' : denied ? '本次申請已拒絕' : status === 'expired' ? '訪問已到期' : '此裝置尚未獲准',
           pending ? '申請已送出。管理者核准後，這個頁面會自動開啟。' : blocked ? '這個瀏覽器目前無法訪問網站。' :
+          denied ? '如仍需要訪問，可以重新送出申請。' :
           '申請時會將公網 IP、瀏覽器及作業系統提供給網站管理者。',
           pending || blocked ? [] : [requestButton, ...(status === 'new' ? [linkButton] : [])]);
         repeat(pending ? 5000 : 30000);
