@@ -209,16 +209,17 @@ function upDownCalendarHTML(snapshot, selection) {
   return `<div class="card-h updown-calendar-head"><h2>單日盈虧 <small>USDT・台北時間</small></h2>
     <select data-updown-month aria-label="選擇月份">${months.map(value =>
       `<option${value === month ? " selected" : ""}>${value}</option>`).join("")}</select></div>
-    <div class="updown-calendar-grid" aria-label="已實現淨損益日曆">
-      ${["日","一","二","三","四","五","六"].map(label => `<div class="updown-weekday">${label}</div>`).join("")}
-      ${'<span aria-hidden="true"></span>'.repeat(offset)}${heat}</div>
     <div class="updown-calendar-detail" aria-live="polite"><strong>${esc(selected)}</strong>
       ${details?.trades ? `<span class="num ${signCls(details.pnl)}">${upDownMoney(details.pnl, true)}</span>` : ""}
       ${details?.trades ? `<dl>${periods.map(([key, label]) => {
         const stats = key === null ? details : details.periods?.[key];
         return `<div><dt>${label}</dt><dd class="num">${score(stats)}
-          <small>${stats?.trades ? `${stats.wins} 勝／${stats.trades} 筆` : "無平倉"}</small></dd></div>`;
-      }).join("")}</dl>` : `<p class="note">${snapshot.daily_performance ? "當日無平倉或結算紀錄。" : "等待同步單日盈虧紀錄。"}</p>`}</div>`;
+          <small>${stats?.trades ? `${stats.wins} 勝／${stats.trades} 筆` : "無平倉"}</small>
+          ${key !== null ? `<small>總盈虧 <span class="${Number.isFinite(stats?.pnl) ? signCls(stats.pnl) : ""}">${upDownMoney(stats?.pnl, true)}</span></small>` : ""}</dd></div>`;
+      }).join("")}</dl>` : `<p class="note">${snapshot.daily_performance ? "當日無平倉或結算紀錄。" : "等待同步單日盈虧紀錄。"}</p>`}</div>
+    <div class="updown-calendar-grid" aria-label="已實現淨損益日曆">
+      ${["日","一","二","三","四","五","六"].map(label => `<div class="updown-weekday">${label}</div>`).join("")}
+      ${'<span aria-hidden="true"></span>'.repeat(offset)}${heat}</div>`;
 }
 
 function upDownPageHTML(snapshot, unavailable = false) {
