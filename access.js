@@ -4,13 +4,16 @@
   const bridge = host + '/site-bridge/';
   const reportPath = /^\/reports\/[A-Za-z0-9_-]+\/report\.html$/;
   const path = location.pathname;
+  const report = reportPath.test(path);
+  const debate = path === '/debate' || path === '/debate.html';
+  const asset = report ? path.slice(1) : debate ? 'debate.html' : 'index.html';
   const get = id => document.getElementById(id);
   const hex = bytes => Array.from(bytes, byte => byte.toString(16).padStart(2,'0')).join('');
   let device, session, active = false, busy = false, timer, popup, previous;
   const requestButton = get('request'), linkButton = get('link'), retryButton = get('retry');
 
   if (!['/', '/index.html', '/debate', '/debate.html'].includes(path) && !reportPath.test(path)) {
-    get('title').textContent = '找不到這個頁面';
+    show('找不到這個頁面','');
     const home = document.createElement('a');
     home.href = '/';
     home.textContent = '回到首頁';
@@ -19,6 +22,7 @@
   }
 
   function show(title, detail, buttons = []) {
+    get('access').removeAttribute('data-loading');
     get('title').textContent = title;
     get('detail').textContent = detail;
     for (const button of [requestButton, linkButton, retryButton]) button.hidden = !buttons.includes(button);
@@ -38,6 +42,7 @@
   }
   async function controlled() {
     const sw = navigator.serviceWorker;
+    if (sw.controller && new URL(sw.controller.scriptURL).pathname === '/access-worker.js') return;
     await sw.register('/access-worker.js', {scope:'/', updateViaCache:'none'});
     await sw.ready;
     if (!sw.controller) {
@@ -50,11 +55,9 @@
     }
     if (new URL(sw.controller.scriptURL).pathname !== '/access-worker.js') throw Error();
   }
-  async function openPrivatePage() {
-    const report = reportPath.test(path), debate = path === '/debate' || path === '/debate.html';
-    const asset = report ? path.slice(1) : debate ? 'debate.html' : 'index.html';
+  async function openPrivatePage(page) {
     if (!report) await controlled();
-    const result = await api('content/'+asset);
+    const result = page || await api('content/'+asset);
     if (result.status === 404) { show('找不到這份內容','請從研究報告頁重新選取。'); return; }
     if (!result.ok) throw Error();
     const html = await result.text();
@@ -97,15 +100,32 @@
     clearTimeout(timer);
     timer = setTimeout(() => { if (!document.hidden) check(); else repeat(delay); }, delay);
   }
-  async function check() {
+  async function accessStatus(visit = false) {
+    const response = await api(visit ? 'access/status?visit=1' : 'access/status');
+    if (!response.ok) throw Error();
+    return (await response.json()).status;
+  }
+  async function enter() {
+    if (debate) return {status: await accessStatus(true)};
+    const page = await api('content/'+asset+'?entry=1');
+    const type = page.headers.get('content-type') || '';
+    if (page.ok && type.includes('eason-entry=allow')) return {status:'allow', page};
+    if ((page.ok || page.status === 403) && type.startsWith('application/json')) {
+      return {status:(await page.json()).status};
+    }
+    // Older installations support the same URL without the entry response.
+    if (page.ok || page.status === 403 || page.status === 404) {
+      return {status: await accessStatus(), page: page.ok ? page : null};
+    }
+    throw Error();
+  }
+  async function check(firstVisit = false) {
     if (busy) return;
     busy = true;
     try {
-      const response = await api('access/status');
-      if (!response.ok) throw Error();
-      const {status} = await response.json();
+      const {status, page} = firstVisit ? await enter() : {status: await accessStatus()};
       if (status === 'allow' || status === 'once') {
-        if (!active) { await openPrivatePage(); active = true; }
+        if (!active) { await openPrivatePage(page); active = true; }
         document.documentElement.style.visibility = '';
         repeat(30000);
       } else if (active) {
@@ -117,8 +137,9 @@
         show(pending ? '等待核准' : blocked ? '訪問已封鎖' : denied ? '本次申請已拒絕' : status === 'expired' ? '訪問已到期' : '此裝置尚未獲准',
           pending ? '申請已送出。管理者核准後，這個頁面會自動開啟。' : blocked ? '這個瀏覽器目前無法訪問網站。' :
           denied ? '如仍需要訪問，可以重新送出申請。' :
-          '申請時會將公網 IP、瀏覽器及作業系統提供給網站管理者。',
-          pending || blocked ? [] : [requestButton, ...(status === 'new' ? [linkButton] : [])]);
+          status === 'seen' ? '網站已記錄本次來訪的公網 IP、瀏覽器及作業系統。送出申請後，管理者會收到通知。' :
+          '網站訪問需要管理者核准。送出申請後，管理者會收到通知。',
+          pending || blocked ? [] : [requestButton, ...(['new', 'seen'].includes(status) ? [linkButton] : [])]);
         repeat(pending ? 5000 : 30000);
       }
       previous = status;
@@ -166,13 +187,13 @@
   };
   window.addEventListener('message', async event => {
     if (!popup || event.source !== popup || event.origin !== host) return;
-    if (event.data?.type === 'eason-site-link-ready' && previous === 'new') {
+    if (event.data?.type === 'eason-site-link-ready' && ['new','seen'].includes(previous)) {
       const digest = hex(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(device))));
       popup?.postMessage({type:'eason-site-link-device',digest},host);
     }
     if (event.data?.type === 'eason-site-linked') { popup = null; check(); }
   });
-  retryButton.onclick = check;
+  retryButton.onclick = () => check(!active);
   // Reports often open a new tab. Keep a single-visit grant with its original tab.
   document.addEventListener('click', event => {
     if (previous !== 'once' || event.defaultPrevented || event.button !== 0 ||
@@ -188,5 +209,5 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
   window.addEventListener('pagehide', () => { if (active) document.documentElement.style.visibility = 'hidden'; });
   window.addEventListener('pageshow', event => { if (event.persisted) check(); });
-  await check();
+  await check(true);
 })();
